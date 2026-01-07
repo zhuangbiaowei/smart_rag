@@ -4,6 +4,7 @@ require_relative '../errors'
 
 require 'concurrent'
 require 'logger'
+require 'json'
 
 module SmartRAG
   module Services
@@ -84,6 +85,7 @@ module SmartRAG
           language = options[:language] || detect_language(query)
           limit = validate_limit(options[:limit] || config[:default_limit])
           alpha = validate_alpha(options[:alpha] || config[:default_alpha])
+          alpha = adjust_alpha_for_query(alpha, query, language)
           rrf_k = options[:rrf_k] || config[:rrf_k]
           filters = options[:filters] || {}
           deduplicate = options.fetch(:enable_deduplication, config[:deduplicate_results])
@@ -112,6 +114,8 @@ module SmartRAG
             k: rrf_k,
             deduplicate: deduplicate
           )
+
+          combined_results = add_category_fallback_results(combined_results, query, language)
 
           # Limit results
           final_results = combined_results.first(limit)
@@ -245,6 +249,74 @@ module SmartRAG
         [[0.0, alpha.to_f].max, 1.0].min
       end
 
+      def adjust_alpha_for_query(alpha, query, language)
+        return alpha unless query
+
+        length = query.strip.length
+        return alpha if length == 0
+
+        # Favor fulltext for short queries where exact keyword match is strong.
+        if language == :zh && length <= 2
+          return [alpha, 0.3].min
+        end
+
+        alpha
+      end
+
+      def add_category_fallback_results(results, query, language)
+        term = query.to_s.strip
+        return results unless language == :zh && term.length <= 2
+
+        category_docs = documents_with_category(term)
+        return results if category_docs.empty?
+
+        existing_doc_ids = results.map { |r| extract_document_id(r[:section]) }.compact
+
+        category_docs.each do |doc|
+          next if existing_doc_ids.include?(doc.id)
+
+          section = ::SmartRAG::Models::SourceSection
+            .where(document_id: doc.id)
+            .order(:section_number)
+            .first
+          next unless section
+
+          results << {
+            section: section,
+            combined_score: 1.0,
+            vector_score: 0.0,
+            text_score: 1.0
+          }
+        end
+
+        results.sort_by { |r| -r[:combined_score] }
+      end
+
+      def documents_with_category(term)
+        ::SmartRAG::Models::SourceDocument.all.select do |doc|
+          metadata = parse_metadata(doc.metadata)
+          category = metadata["category"] || metadata[:category]
+          category.to_s.include?(term)
+        end
+      end
+
+      def parse_metadata(raw)
+        return {} if raw.nil?
+        return raw if raw.is_a?(Hash)
+
+        JSON.parse(raw)
+      rescue StandardError
+        {}
+      end
+
+      def extract_document_id(section)
+        if section.is_a?(Hash)
+          section[:document_id] || section['document_id']
+        else
+          section&.document_id
+        end
+      end
+
       def perform_text_search(query, language, limit, filters)
         if filters && !filters.empty?
           # Convert tags to tag_ids for fulltext manager
@@ -290,25 +362,25 @@ module SmartRAG
       def combine_with_weighted_rrf(text_results, vector_results, alpha:, k:, deduplicate:)
         # Convert text results to RRF format
         text_rrf = text_results.each_with_index.map do |result, idx|
-          { result: result, score: 1.0 / (k + idx + 1), source: :text }
+          { result: result, section: normalize_result_section(result), score: 1.0 / (k + idx + 1), source: :text }
         end
 
         # Convert vector results to RRF format
         vector_rrf = vector_results.each_with_index.map do |result, idx|
-          { result: result, score: 1.0 / (k + idx + 1), source: :vector }
+          { result: result, section: normalize_result_section(result), score: 1.0 / (k + idx + 1), source: :vector }
         end
 
         # Group by section_id or other unique identifier
         combined = {}
         text_rrf.each do |item|
           key = extract_result_key(item[:result])
-          combined[key] ||= { result: item[:result], text_score: 0, vector_score: 0 }
+          combined[key] ||= { section: item[:section], text_score: 0, vector_score: 0 }
           combined[key][:text_score] = item[:score]
         end
 
         vector_rrf.each do |item|
           key = extract_result_key(item[:result])
-          combined[key] ||= { result: item[:result], text_score: 0, vector_score: 0 }
+          combined[key] ||= { section: item[:section], text_score: 0, vector_score: 0 }
           combined[key][:vector_score] = item[:score]
         end
 
@@ -316,12 +388,18 @@ module SmartRAG
         combined.map do |_key, data|
           combined_score = alpha * data[:vector_score] + (1 - alpha) * data[:text_score]
           {
-            section: data[:result],
+            section: data[:section],
             combined_score: combined_score,
             vector_score: data[:vector_score],
             text_score: data[:text_score]
           }
         end.sort_by { |r| -r[:combined_score] }
+      end
+
+      def normalize_result_section(result)
+        return result[:section] if result.is_a?(Hash) && result[:section]
+
+        result
       end
 
       def extract_result_key(result)
