@@ -1,0 +1,42 @@
+# Database configuration for different environments
+# This is a sample configuration file
+# Copy and modify for your specific environment
+
+default: &default
+  adapter: postgresql
+  encoding: unicode
+  pool: 5
+  timeout: 5000
+
+development:
+  <<: *default
+  host: <%= ENV['SMARTRAG_DB_HOST'] || 'localhost' %>
+  port: <%= ENV['SMARTRAG_DB_PORT'] || 5432 %>
+  database: <%= ENV['SMARTRAG_DB_NAME'] || 'smart_rag_development' %>
+  username: <%= ENV['SMARTRAG_DB_USER'] || 'rag_user' %>
+  password: <%= ENV['SMARTRAG_DB_PASSWORD'] || 'rag_pwd' %>
+
+test:
+  <<: *default
+  host: <%= ENV['SMARTRAG_TEST_DB_HOST'] || 'localhost' %>
+  port: <%= ENV['SMARTRAG_TEST_DB_PORT'] || 5432 %>
+  database: <%= ENV['SMARTRAG_TEST_DB_NAME'] || 'smart_rag_test' %>
+  username: <%= ENV['SMARTRAG_TEST_DB_USER'] || 'postgres' %>
+  password: <%= ENV['SMARTRAG_TEST_DB_PASSWORD'] %>
+
+staging:
+  <<: *default
+  host: <%= ENV['SMARTRAG_DB_HOST'] %>
+  port: <%= ENV['SMARTRAG_DB_PORT'] || 5432 %>
+  database: <%= ENV['SMARTRAG_DB_NAME'] || 'smart_rag_staging' %>
+  username: <%= ENV['SMARTRAG_DB_USER'] %>
+  password: <%= ENV['SMARTRAG_DB_PASSWORD'] %>
+
+production:
+  <<: *default
+  host: <%= ENV['SMARTRAG_DB_HOST'] %>
+  port: <%= ENV['SMARTRAG_DB_PORT'] || 5432 %>
+  database: <%= ENV['SMARTRAG_DB_NAME'] || 'smart_rag_production' %>
+  username: <%= ENV['SMARTRAG_DB_USER'] %>
+  password: <%= ENV['SMARTRAG_DB_PASSWORD'] %>
+  pool: 10

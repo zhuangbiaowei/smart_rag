@@ -1,0 +1,81 @@
+#!/usr/bin/env ruby
+# Standalone database migration script using psql
+
+require 'yaml'
+require 'erb'
+
+def load_config
+  config_file = File.join(__dir__, '..', 'config', 'smart_rag.yml')
+  if File.exist?(config_file)
+    yaml_content = File.read(config_file)
+    YAML.safe_load(ERB.new(yaml_content).result, permitted_classes: [Symbol, Time])
+  else
+    nil
+  end
+end
+
+def database_config
+  config = load_config
+  if config && config['database']
+    config['database']
+  else
+    {
+      'adapter' => 'postgresql',
+      'host' => ENV['SMARTRAG_DB_HOST'] || 'localhost',
+      'port' => ENV['SMARTRAG_DB_PORT'] || 5432,
+      'database' => ENV['SMARTRAG_DB_NAME'] || 'smart_rag_development',
+      'username' => ENV['SMARTRAG_DB_USER'] || 'postgres',
+      'password' => ENV['SMARTRAG_DB_PASSWORD']
+    }
+  end
+end
+
+def run_migration(migration_file, config)
+  puts "Running migration: #{File.basename(migration_file)}"
+
+  # Load migration content
+  content = File.read(migration_file)
+
+  # Extract the up block
+  if content =~ /up do\n(.*?)\n  end/m
+    sql_commands = $1
+
+    # Write to temporary SQL file
+    temp_file = '/tmp/migration.sql'
+    File.write(temp_file, sql_commands.gsub(/^      /, ''))
+
+    # Run with psql
+    cmd = [
+      'psql',
+      '-h', config['host'] || 'localhost',
+      '-p', (config['port'] || 5432).to_s,
+      '-U', config['username'] || 'postgres',
+      '-d', config['database'],
+      '-f', temp_file
+    ]
+
+    system(*cmd)
+    File.delete(temp_file) if File.exist?(temp_file)
+  end
+end
+
+def run_migrations
+  config = database_config
+
+  puts "Connecting to database: #{config['database']}"
+
+  # Run each migration file
+  migrations_dir = File.join(__dir__, '..', 'db', 'migrations')
+  migrations = Dir[File.join(migrations_dir, '*.rb')].sort
+
+  migrations.each do |migration_file|
+    run_migration(migration_file, config)
+  end
+
+  puts "\nAll migrations completed!"
+end
+
+# Run if called directly
+if __FILE__ == $0
+  run_migrations
+end

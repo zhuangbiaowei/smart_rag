@@ -1,0 +1,10 @@
+adapters:
+  openai: OpenAIAdapter
+logger_file: ./log/prompt.log
+llms:
+  SiliconFlow:
+    adapter: openai
+    url: https://api.siliconflow.cn/v1/
+    api_key: ENV["APIKey"]
+worker_path: "./workers"
+template_path: "./templates"

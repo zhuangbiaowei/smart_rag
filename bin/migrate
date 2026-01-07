@@ -1,0 +1,95 @@
+#!/usr/bin/env ruby
+# Simple database migration runner using psql
+
+require 'fileutils'
+
+# Database configuration
+def db_config
+  {
+    host: ENV['SMARTRAG_DB_HOST'] || 'localhost',
+    port: ENV['SMARTRAG_DB_PORT'] || 5432,
+    username: ENV['SMARTRAG_DB_USER'] || 'postgres',
+    database: ENV['SMARTRAG_DB_NAME'] || 'smart_rag_development'
+  }
+end
+
+def run_psql(sql)
+  config = db_config
+
+  if Process.uid == 0
+    # Running as root, use sudo
+    cmd = "sudo -u #{config[:username]} psql -h #{config[:host]} -p #{config[:port]} -d #{config[:database]} -c \"#{sql}\""
+  else
+    cmd = "psql -h #{config[:host]} -p #{config[:port]} -U #{config[:username]} -d #{config[:database]} -c \"#{sql}\""
+  end
+  system(cmd)
+end
+
+def migrate
+  puts "Running migrations for #{db_config[:database]}..."
+
+  # Enable extensions first
+  puts "\n1. Enabling extensions..."
+  success = run_psql("CREATE EXTENSION IF NOT EXISTS vector")
+  success = run_psql("CREATE EXTENSION IF NOT EXISTS pg_jieba")
+
+  # Run migrations in order
+  migrations_dir = File.join(__dir__, '..', 'db', 'migrations')
+  migrations = Dir[File.join(migrations_dir, '*.rb')].sort
+
+  migrations.each_with_index do |migration, idx|
+    puts "\n#{idx + 2}. Running #{File.basename(migration)}..."
+    content = File.read(migration)
+
+    # Extract SQL from up block
+    if content =~ /up do\n(.*?)\n  end/m
+      sql = $1.gsub(/^      /, '')
+      # Replace Sequel-specific syntax
+      sql.gsub!(/Sequel::CURRENT_TIMESTAMP/, "CURRENT_TIMESTAMP")
+
+      # Write to temp file and execute
+      temp_file = '/tmp/migration.sql'
+      File.write(temp_file, sql)
+
+      if Process.uid == 0
+        system("sudo -u #{db_config[:username]} psql -h #{db_config[:host]} -p #{db_config[:port]} -d #{db_config[:database]} -f #{temp_file}")
+      else
+        system("psql -h #{db_config[:host]} -p #{db_config[:port]} -U #{db_config[:username]} -d #{db_config[:database]} -f #{temp_file}")
+      end
+      File.delete(temp_file) if File.exist?(temp_file)
+    end
+  end
+
+  puts "\n✓ All migrations completed successfully!"
+end
+
+def seed
+  puts "\nSeeding database..."
+  seeds_file = File.join(__dir__, '..', 'db', 'seeds', 'text_search_configs.sql')
+
+  if File.exist?(seeds_file)
+    if Process.uid == 0
+      system("sudo -u #{db_config[:username]} psql -h #{db_config[:host]} -p #{db_config[:port]} -d #{db_config[:database]} -f #{seeds_file}")
+    else
+      system("psql -h #{db_config[:host]} -p #{db_config[:port]} -U #{db_config[:username]} -d #{db_config[:database]} -f #{seeds_file}")
+    end
+    puts "✓ Database seeded!"
+  else
+    puts "✗ Seeds file not found: #{seeds_file}"
+  end
+end
+
+# Run commands
+if __FILE__ == $0
+  case ARGV[0]
+  when 'migrate'
+    migrate
+  when 'seed'
+    seed
+  when 'reset'
+    migrate
+    seed
+  else
+    puts "Usage: #{$0} [migrate|seed|reset]"
+  end
+end

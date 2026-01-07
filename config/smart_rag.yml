@@ -1,0 +1,156 @@
+# SmartRAG Configuration File
+# Copy this file and modify for your environment
+#
+# Production: config/smart_rag.production.yml
+# Development: config/smart_rag.development.yml
+# Test: config/smart_rag.test.yml
+
+database:
+  adapter: postgresql
+  host: localhost
+  port: 5432
+  # Use environment variables for sensitive data
+  database: <%= ENV['SMARTRAG_DB_NAME'] || 'smart_rag_development' %>
+  username: <%= ENV['SMARTRAG_DB_USER'] || 'rag_user' %>
+  password: <%= ENV['SMARTRAG_DB_PASSWORD'] || 'rag_pwd' %>
+  pool: 5
+  encoding: unicode
+  # Connection timeout in seconds
+  timeout: 5000
+  # Extensions to enable
+  extensions:
+    - pgvector
+    - pg_jieba  # For Chinese text segmentation
+
+# Embedding Configuration
+embedding:
+  # Provider can be: openai, azure_openai, local, or custom
+  provider: <%= ENV['EMBEDDING_PROVIDER'] || 'openai' %>
+  api_key: <%= ENV['EMBEDDING_API_KEY'] %>
+  endpoint: <%= ENV['EMBEDDING_ENDPOINT'] || 'https://api.openai.com/v1/embeddings' %>
+  model: <%= ENV['EMBEDDING_MODEL'] || 'text-embedding-ada-002' %>
+  dimensions: <%= ENV['EMBEDDING_DIMENSIONS'] || 1024 %>
+  # Request timeout in seconds
+  timeout: 30
+  # Batch size for embedding generation
+  batch_size: 10
+
+# Full-Text Search Configuration
+fulltext_search:
+  # Default language for text search
+  default_language: <%= ENV['DEFAULT_LANGUAGE'] || 'en' %>
+
+  # Maximum number of search results to return
+  max_results: <%= ENV['MAX_SEARCH_RESULTS'] || 100 %>
+
+  # Enable Chinese text segmentation with pg_jieba
+  enable_jieba: <%= ENV['ENABLE_JIEBA'] != 'false' %>
+
+  # Path to custom dictionary for jieba (optional)
+  custom_dict_path: <%= ENV['JIEBA_DICT_PATH'] %>
+
+  # Hybrid search weight configuration (0.0 to 1.0)
+  hybrid_weight:
+    fulltext: <%= ENV['FULLTEXT_WEIGHT'] || 0.4 %>
+    vector: <%= ENV['VECTOR_WEIGHT'] || 0.6 %>
+
+  # RRF (Reciprocal Rank Fusion) algorithm parameter
+  # Higher k values give more weight to lower-ranked results
+  rrf_k: <%= ENV['RRF_K'] || 60 %>
+
+  # Search result caching configuration
+  cache:
+    enabled: <%= ENV['CACHE_ENABLED'] != 'false' %>
+    ttl: <%= ENV['CACHE_TTL'] || 3600 %>  # Cache TTL in seconds
+    # Optional Redis configuration
+    redis_url: <%= ENV['REDIS_URL'] %>
+
+  # Query logging and monitoring
+  monitoring:
+    log_slow_queries: <%= ENV['LOG_SLOW_QUERIES'] != 'false' %>
+    slow_query_threshold_ms: <%= ENV['SLOW_QUERY_THRESHOLD'] || 100 %>
+
+  # Index maintenance
+  index:
+    enable_partition: <%= ENV['ENABLE_PARTITION'] != 'false' %>
+    auto_vacuum: <%= ENV['AUTO_VACUUM'] != 'false' %>
+    # Schedule for automatic index rebuild (cron format)
+    rebuild_schedule: <%= ENV['INDEX_REBUILD_SCHEDULE'] %>
+
+# Document Processing Configuration
+chunking:
+  # Maximum characters per chunk
+  max_chars: <%= ENV['CHUNK_MAX_CHARS'] || 4000 %>
+
+  # Overlap between chunks to preserve context
+  overlap: <%= ENV['CHUNK_OVERLAP'] || 100 %>
+
+  # Enable splitting by Markdown headers first
+  split_by_headers: <%= ENV['SPLIT_BY_HEADERS'] != 'false' %>
+
+  # Minimum chunk size (discard chunks smaller than this)
+  min_chunk_size: <%= ENV['MIN_CHUNK_SIZE'] || 100 %>
+
+# Search Configuration
+search:
+  # Default number of results to return
+  default_limit: <%= ENV['DEFAULT_SEARCH_LIMIT'] || 5 %>
+
+  # Boost weight for tag matches in vector search (0.0 to 1.0)
+  tag_boost_weight: <%= ENV['TAG_BOOST_WEIGHT'] || 0.5 %>
+
+  # Maximum distance threshold for vector search results
+  max_distance_threshold: <%= ENV['MAX_DISTANCE_THRESHOLD'] || 0.3 %>
+
+# LLM Configuration for tags and summarization
+llm:
+  provider: <%= ENV['LLM_PROVIDER'] || 'openai' %>
+  api_key: <%= ENV['LLM_API_KEY'] %>
+  endpoint: <%= ENV['LLM_ENDPOINT'] || 'https://api.openai.com/v1/chat/completions' %>
+  model: <%= ENV['LLM_MODEL'] || 'gpt-4' %>
+
+  # Generation parameters
+  temperature: <%= ENV['LLM_TEMPERATURE'] || 0.3 %>
+  max_tokens: <%= ENV['LLM_MAX_TOKENS'] || 2000 %>
+  timeout: <%= ENV['LLM_TIMEOUT'] || 60 %>
+
+# Document Processing
+document:
+  # Supported file types for upload/processing
+  supported_types:
+    - .md
+    - .txt
+    - .pdf
+    - .docx
+    - .html
+
+  # Maximum file size in MB
+  max_file_size: <%= ENV['MAX_FILE_SIZE'] || 50 %>
+
+  # Download timeout for URLs
+  download_timeout: <%= ENV['DOWNLOAD_TIMEOUT'] || 30 %>
+
+# Logging Configuration
+logging:
+  # Log level: debug, info, warn, error, fatal
+  level: <%= ENV['LOG_LEVEL'] || 'info' %>
+
+  # Log format: json, plain
+  format: <%= ENV['LOG_FORMAT'] || 'json' %>
+
+  # Log file path (null for stdout)
+  file_path: <%= ENV['LOG_FILE_PATH'] %>
+
+  # Enable query logging
+  enable_query_log: <%= ENV['ENABLE_QUERY_LOG'] != 'false' %>
+
+# Performance Settings
+performance:
+  # Thread pool size for parallel processing
+  thread_pool_size: <%= ENV['THREAD_POOL_SIZE'] || 4 %>
+
+  # Batch size for database operations
+  db_batch_size: <%= ENV['DB_BATCH_SIZE'] || 100 %>
+
+  # Enable connection pooling
+  connection_pooling: <%= ENV['CONNECTION_POOLING'] != 'false' %>

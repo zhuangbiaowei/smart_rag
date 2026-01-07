@@ -1,0 +1,144 @@
+erDiagram
+    %% Main tables - Core domain
+    source_documents {
+        integer id PK
+        varchar title "NOT NULL"
+        text url
+        varchar author
+        date publication_date
+        varchar language "DEFAULT 'en'"
+        text description
+        integer download_state "DEFAULT 0, NOT NULL"
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+        timestamp updated_at "DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    source_sections {
+        integer id PK
+        integer document_id FK "NOT NULL"
+        text content "NOT NULL"
+        varchar section_title
+        integer section_number "DEFAULT 0"
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+        timestamp updated_at "DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    tags {
+        integer id PK
+        varchar name "NOT NULL, UNIQUE"
+        integer parent_id FK
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    research_topics {
+        integer id PK
+        varchar name "NOT NULL"
+        text description
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    %% Many-to-many relationship tables
+    section_tags {
+        integer section_id PK,FK "NOT NULL"
+        integer tag_id PK,FK "NOT NULL"
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    research_topic_sections {
+        integer research_topic_id PK,FK "NOT NULL"
+        integer section_id PK,FK "NOT NULL"
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    research_topic_tags {
+        integer research_topic_id PK,FK "NOT NULL"
+        integer tag_id PK,FK "NOT NULL"
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    %% Full-text search optimized table
+    section_fts {
+        integer section_id PK,FK "NOT NULL"
+        integer document_id FK
+        text language "DEFAULT 'en'"
+        tsvector fts_title
+        tsvector fts_content
+        tsvector fts_combined
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+        timestamp updated_at "DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    %% Embeddings for vector search
+    embeddings {
+        integer id PK
+        integer source_id FK "NOT NULL"
+        vector(1024) vector "NOT NULL"
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    %% Search analytics and logs
+    search_logs {
+        integer id PK
+        text query "NOT NULL"
+        varchar search_type
+        integer execution_time_ms
+        integer results_count
+        vector(1024) query_vector
+        integer[] result_ids
+        jsonb filters
+        timestamp created_at "DEFAULT CURRENT_TIMESTAMP"
+    }
+
+    %% Configuration tables
+    text_search_configs {
+        text language_code PK "NOT NULL"
+        text config_name "NOT NULL"
+        boolean is_installed "DEFAULT true"
+    }
+
+    %% Database schema version tracking
+    schema_info {
+        integer version PK "NOT NULL"
+    }
+
+    %% Relationships
+    source_documents ||--o{ source_sections : "has many"
+    source_documents ||--o{ section_fts : "has many"
+    source_documents ||--o{ section_tags : "has many"
+    source_documents ||--o{ embeddings : "has many (via sections)"
+
+    source_sections }o--|| source_documents : "belongs to"
+    source_sections ||--o{ section_tags : "has many"
+    source_sections ||--o{ research_topic_sections : "has many"
+    source_sections ||--o{ embeddings : "has one"
+    source_sections ||--|| section_fts : "has one"
+
+    tags ||--o{ section_tags : "tags many sections"
+    tags ||--o{ research_topic_tags : "tags many topics"
+    tags }o--o{ tags : "self-referencing parent"
+
+    research_topics ||--o{ research_topic_sections : "has many sections"
+    research_topics ||--o{ research_topic_tags : "has many tags"
+
+    section_tags }o--|| source_sections : "section belongs to"
+    section_tags }o--|| tags : "tag belongs to"
+
+    research_topic_sections }o--|| research_topics : "topic belongs to"
+    research_topic_sections }o--|| source_sections : "section belongs to"
+
+    research_topic_tags }o--|| research_topics : "topic belongs to"
+    research_topic_tags }o--|| tags : "tag belongs to"
+
+    section_fts }o--|| source_sections : "section has FTS"
+    section_fts }o--|| source_documents : "document has FTS"
+
+    embeddings }o--|| source_sections : "embedding belongs to"
+
+    %% Indexes (not in Mermaid standard, but important for understanding)
+    %% All tables have appropriate indexes on PKs and FKs
+    %% source_documents: indexes on download_state, created_at, language
+    %% source_sections: indexes on document_id, section_number
+    %% section_tags: unique index on (section_id, tag_id)
+    %% section_fts: GIN indexes on tsvector columns
+    %% embeddings: index on source_id
+    %% search_logs: indexes on created_at, search_type, execution_time_ms

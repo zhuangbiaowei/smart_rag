@@ -1,0 +1,111 @@
+# Full-text search configuration
+# This file contains language-specific settings for full-text search
+
+default: &default
+  # Default language for text search
+  default_language: en
+
+  # Maximum number of search results to return
+  max_results: 100
+
+  # Enable Chinese text segmentation with pg_jieba
+  enable_jieba: true
+
+  # Hybrid search weight configuration
+  # These weights determine how results are combined in hybrid searches
+  hybrid_weight:
+    fulltext: 0.4  # Weight for full-text search results
+    vector: 0.6    # Weight for vector search results
+
+  # RRF (Reciprocal Rank Fusion) algorithm parameter
+  # Higher k values give more weight to lower-ranked results
+  rrf_k: 60
+
+  # Search result caching
+  cache:
+    enabled: false  # Disabled by default, can be enabled with Redis
+    ttl: 3600       # Cache TTL in seconds
+
+  # Highlighting configuration
+  highlighting:
+    enabled: true
+    max_length: 200  # Maximum length of highlighted snippets
+    pre_tags:
+      - '<mark>'
+    post_tags:
+      - '</mark>'
+
+  # Language-specific configurations
+  languages:
+    en:
+      config_name: pg_catalog.english
+      stop_words: true  # Remove common words
+      stemming: true    # Apply stemming
+    zh:
+      config_name: jieba
+      custom_dict: null  # Path to custom dictionary
+      stop_words: true
+      stemming: false
+    ja:
+      config_name: pg_catalog.simple
+      stop_words: true
+      stemming: false
+    ko:
+      config_name: pg_catalog.simple
+      stop_words: true
+      stemming: false
+
+  # Query configuration
+  queries:
+    # Minimum word length to include in search
+    min_word_length: 2
+    # Maximum number of words in a query
+    max_words: 20
+    # Allow phrase queries with quotes
+    phrase_queries: true
+    # Allow boolean operators (AND, OR, NOT)
+    boolean_operators: true
+
+  # Index configuration
+  indexes:
+    # Use GIN indexes for tsvector columns (recommended)
+    use_gin: true
+    # Create language-specific partitioned indexes
+    partitioned_indexes: true
+    # Automatic index maintenance
+    auto_rebuild: false
+    rebuild_schedule: null  # Cron format, e.g., '0 2 * * 0' for weekly on Sunday 2am
+
+  # Synonyms and thesaurus
+  synonyms:
+    enabled: false
+    # Path to synonym dictionary file
+    # Format: word1 word2 word3 (one group per line)
+    dictionary_path: null
+
+  # Performance settings
+  performance:
+    # Enable query planning with text search
+    enable_query_planning: true
+    # Work memory for sorting (increase for large result sets)
+    work_mem: '4MB'
+
+  # Monitoring and logging
+  monitoring:
+    # Log slow queries for analysis
+    log_slow_queries: true
+    # Threshold for slow query logging (ms)
+    slow_query_threshold: 100
+    # Track query performance over time
+    track_performance: true
+    # Retention period for query logs (days)
+    log_retention_days: 30
+
+  # Advanced settings
+  advanced:
+    # Consider word proximity in ranking
+    rank_by_proximity: true
+    # Weight for title matches vs content
+    title_weight: 1.5
+    # Normalize rankings
+    normalize_rank: true
