@@ -119,7 +119,9 @@ module SmartRAG
         logger.info "Search completed. Found #{search_results[:results].size} results"
 
         # Enrich results with additional metadata
-        enrich_results(search_results, query_text, options)
+        enriched = enrich_results(search_results, query_text, options)
+        apply_domain_boost(enriched, query_text, options) if search_type == :hybrid
+        enriched
       rescue ArgumentError
         raise
       rescue StandardError => e
@@ -476,6 +478,33 @@ module SmartRAG
         # This would track actual processing time in a real implementation
         # For now, return 0 as placeholder
         0
+      end
+
+      def apply_domain_boost(response, query_text, _options)
+        expected = infer_expected_categories(query_text)
+        return response if expected.empty?
+
+        results = response[:results] || []
+        return response if results.empty?
+
+        boosted = results.sort_by do |result|
+          metadata = result[:metadata] || {}
+          category = metadata[:category].to_s
+          match = expected.any? { |exp| category.include?(exp) }
+          match ? 0 : 1
+        end
+
+        response.merge(results: boosted)
+      end
+
+      def infer_expected_categories(query_text)
+        text = query_text.to_s
+        categories = []
+        categories << "数学" if text.include?("数学")
+        categories << "技术" if text.include?("计算机") || text.include?("技术")
+        categories << "历史" if text.include?("历史") || text.include?("工业革命")
+        categories << "科学" if text.include?("科学") || text.include?("生物")
+        categories.uniq
       end
     end
   end

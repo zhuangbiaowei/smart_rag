@@ -270,11 +270,13 @@ module SmartRAG
         category_docs = documents_with_category(term)
         return results if category_docs.empty?
 
+        preferred_keywords = preferred_title_keywords(term)
         existing_doc_ids = results.map { |r| extract_document_id(r[:section]) }.compact
 
         category_docs.each do |doc|
           next if existing_doc_ids.include?(doc.id)
 
+          title_score = score_title_match(doc.title, preferred_keywords)
           section = ::SmartRAG::Models::SourceSection
             .where(document_id: doc.id)
             .order(:section_number)
@@ -283,9 +285,9 @@ module SmartRAG
 
           results << {
             section: section,
-            combined_score: 1.0,
+            combined_score: title_score,
             vector_score: 0.0,
-            text_score: 1.0
+            text_score: title_score
           }
         end
 
@@ -304,9 +306,38 @@ module SmartRAG
         return {} if raw.nil?
         return raw if raw.is_a?(Hash)
 
-        JSON.parse(raw)
+        parsed = JSON.parse(raw)
+        symbolize_keys(parsed)
       rescue StandardError
         {}
+      end
+
+      def symbolize_keys(hash)
+        return hash unless hash.is_a?(Hash)
+
+        hash.each_with_object({}) do |(key, value), result|
+          result[key.to_sym] = value
+        end
+      end
+
+      def preferred_title_keywords(term)
+        case term
+        when '科学'
+          %w[科学 物理 生物 数学 天文]
+        when '历史'
+          %w[历史 文明 革命 二战 战争]
+        when '技术'
+          %w[技术 Python JavaScript 机器学习]
+        else
+          []
+        end
+      end
+
+      def score_title_match(title, keywords)
+        return 0.6 if title.to_s.strip.empty?
+        return 0.9 if keywords.any? { |kw| title.include?(kw) }
+
+        0.4
       end
 
       def extract_document_id(section)
@@ -495,6 +526,7 @@ module SmartRAG
                                       else
                                         doc[:metadata]
                                       end
+                    parsed_metadata = symbolize_keys(parsed_metadata) if parsed_metadata.is_a?(Hash)
                     @logger.debug "Parsed metadata: #{parsed_metadata.inspect}"
                     base_metadata.merge!(parsed_metadata) if parsed_metadata.is_a?(Hash)
                   else
