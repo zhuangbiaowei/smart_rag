@@ -5,6 +5,6 @@ llms:
   SiliconFlow:
     adapter: openai
     url: https://api.siliconflow.cn/v1/
-    api_key: ENV["APIKey"]
+    api_key: "sk-qbmqiwoyvswtyzrdjrojkaplerhwcwoloulqlxgcjfjxpmpw"
 worker_path: "./workers"
 template_path: "./templates"

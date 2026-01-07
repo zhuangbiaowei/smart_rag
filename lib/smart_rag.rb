@@ -3,6 +3,7 @@ require_relative "smart_rag/config"
 require_relative "smart_rag/errors"
 require_relative "smart_rag/models"
 require "sequel"
+require "logger"
 
 module SmartRAG
   class Error < StandardError; end

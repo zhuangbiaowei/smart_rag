@@ -15,8 +15,10 @@ module SmartRAG
       # @option config [Logger] :logger Logger instance (default: Logger.new(STDOUT))
       # @option config [Integer] :max_context_length Maximum context length (default: 4000)
       def initialize(config = {})
+        config ||= {}
+        @logger = Logger.new(STDOUT)
         @config = default_config.merge(config)
-        @logger = @config[:logger] || Logger.new(STDOUT)
+        @logger = @config[:logger] || @logger
         @max_context_length = @config[:max_context_length]
 
         # Load workers
@@ -301,8 +303,9 @@ module SmartRAG
       end
 
       def log_error(message, exception)
-        logger.error "#{message}: #{exception.message}"
-        logger.error exception.backtrace.join("\n  ")
+        active_logger = logger || @logger || Logger.new(STDOUT)
+        active_logger.error "#{message}: #{exception.message}"
+        active_logger.error exception.backtrace.join("\n  ")
       end
 
       def default_config

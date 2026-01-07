@@ -17,7 +17,7 @@ class RAGSearchTester
       },
       llm: {
         provider: "openai",
-        api_key: ENV["API_KEY"] 
+        api_key: "sk-qbmqiwoyvswtyzrdjrojkaplerhwcwoloulqlxgcjfjxpmpw"
       },
     }
 

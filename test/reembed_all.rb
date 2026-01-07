@@ -102,7 +102,7 @@ class EmbeddingRegenerator
     puts "Embeddings: #{embeddings_count}"
 
     # 检查哪些 sections 没有 embeddings
-    sections_without = SmartRAG::Models::SourceSection.without_embeddings(100)
+    sections_without = SmartRAG::Models::SourceSection.without_embeddings(limit: 100)
     if sections_without.any?
       puts "\n警告: #{sections_without.count} 个 sections 没有 embeddings"
       puts "Sections without embeddings (前10个):"

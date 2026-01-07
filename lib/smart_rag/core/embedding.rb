@@ -153,10 +153,21 @@ module SmartRAG
 
         limit = options[:limit] || 10
         threshold = options[:threshold] || 0.3
+        fallback_threshold = options[:fallback_threshold] || 0.1
 
         puts "[DEBUG] search_by_vector: vector.length=#{vector.length}, threshold=#{threshold}"
 
         results = Models::Embedding.similar_to(vector, limit: limit, threshold: threshold)
+
+        if results.empty? && fallback_threshold < threshold
+          logger.info "No results at threshold=#{threshold}, retrying with fallback_threshold=#{fallback_threshold}"
+          results = Models::Embedding.similar_to(vector, limit: limit, threshold: fallback_threshold)
+        end
+
+        if results.empty? && options.fetch(:fallback_to_nearest, true)
+          logger.info "No results after threshold fallback, returning nearest neighbors without threshold"
+          results = Models::Embedding.nearest_to(vector, limit: limit)
+        end
 
         puts "[DEBUG] search_by_vector: returned #{results.size} results"
 

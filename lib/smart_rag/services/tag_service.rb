@@ -17,8 +17,10 @@ module SmartRAG
       # @option config [Integer] :timeout Timeout for API calls (default: 30)
       # @option config [Logger] :logger Logger instance (default: Logger.new(STDOUT))
       def initialize(config = {})
+        config ||= {}
+        @logger = Logger.new(STDOUT)
         @config = default_config.merge(config)
-        @logger = @config[:logger] || Logger.new(STDOUT)
+        @logger = @config[:logger] || @logger
 
         # Load workers
         workers_dir = File.join(File.dirname(__FILE__), "..", "..", "..", "workers")

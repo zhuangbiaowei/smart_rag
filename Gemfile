@@ -26,6 +26,7 @@ gem "yaml", "~> 0.2"
 
 # LLM integration
 gem "smart_prompt", "~> 0.1"
+gem "numo-narray", github: "ruby-numo/numo-narray"
 
 # Concurrent programming
 gem "concurrent-ruby", "~> 1.0"

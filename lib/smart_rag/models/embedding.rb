@@ -68,6 +68,27 @@ module SmartRAG
           dataset.all
         end
 
+        # Find nearest embeddings without a threshold fallback
+        def nearest_to(query_vector, limit: 10)
+          server_version = db.server_version
+
+          formatted_vector = if query_vector.is_a?(Array)
+                               "[#{query_vector.join(',')}]"
+                             else
+                               query_vector.to_s
+                             end
+
+          dataset = if server_version >= 120_000 # PostgreSQL 12+
+                      order(Sequel.lit('vector <=> ?', formatted_vector))
+                        .limit(limit)
+                    else
+                      order(Sequel.lit('cosine_distance(vector, ?)', formatted_vector))
+                        .limit(limit)
+                    end
+
+          dataset.all
+        end
+
         # Batch insert embeddings
         def batch_insert(embedding_data)
           db.transaction do

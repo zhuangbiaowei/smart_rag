@@ -14,8 +14,10 @@ module SmartRAG
       # @option config [Integer] :retries Number of retries for API calls (default: 3)
       # @option config [Integer] :timeout Timeout for API calls (default: 60)
       def initialize(config = {})
+        config ||= {}
+        @logger = Logger.new(STDOUT)
         @config = default_config.merge(config)
-        @logger = @config[:logger] || Logger.new(STDOUT)
+        @logger = @config[:logger] || @logger
 
         # Load workers
         workers_dir = File.join(File.dirname(__FILE__), '..', '..', '..', 'workers')
@@ -257,8 +259,9 @@ module SmartRAG
       end
 
       def log_error(message, exception)
-        logger.error "#{message}: #{exception.message}"
-        logger.error exception.backtrace.join("\n")
+        active_logger = logger || @logger || Logger.new(STDOUT)
+        active_logger.error "#{message}: #{exception.message}"
+        active_logger.error exception.backtrace.join("\n")
       end
 
       def default_config

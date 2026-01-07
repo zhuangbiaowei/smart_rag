@@ -26,9 +26,9 @@ class ExistingEmbeddingsGenerator
     puts "为现有的 sections 重新生成 embeddings..."
     puts "=" * 60
 
-    # 获取所有没有 embeddings 的 sections
-    sections = SmartRAG::Models::SourceSection.without_embeddings(1000)
-    total = sections.length
+    # 获取所有没�?embeddings �?sections
+    sections = SmartRAG::Models::SourceSection.without_embeddings(limit: 1000)
+    total = sections.count
 
     if total == 0
       puts "所有 sections 都有 embeddings，无需重新生成。"
@@ -39,6 +39,7 @@ class ExistingEmbeddingsGenerator
 
     # 获取所有 sections（为了批量处理）
     all_sections = SmartRAG::Models::SourceSection.all
+    all_total = all_sections.length
 
     # 创建 embedding service
     embedding_service = SmartRAG::Services::EmbeddingService.new
@@ -64,8 +65,8 @@ class ExistingEmbeddingsGenerator
 
         # 每 20 个显示进度
         if (index + 1) % 20 == 0
-          progress = ((index + 1).to_f / total * 100).round(1)
-          @rag.logger.info "进度: #{index + 1}/#{total} (#{progress}%)"
+          progress = ((index + 1).to_f / all_total * 100).round(1)
+          @rag.logger.info "进度: #{index + 1}/#{all_total} (#{progress}%)"
         end
       rescue StandardError => e
         failed_count += 1
@@ -103,8 +104,8 @@ class ExistingEmbeddingsGenerator
     puts "Sections: #{sections_count}"
     puts "Embeddings: #{embeddings_count}"
 
-    # 检查哪些 sections 没有 embeddings
-    sections_without = SmartRAG::Models::SourceSection.without_embeddings(100)
+    # 检查哪�?sections 没有 embeddings
+    sections_without = SmartRAG::Models::SourceSection.without_embeddings(limit: 100)
     if sections_without.any?
       puts "\n警告: #{sections_without.count} 个 sections 没有 embeddings"
     else
@@ -130,17 +131,17 @@ class ExistingEmbeddingsGenerator
 
     test_queries.each_with_index do |query, index|
       puts "\n测试 #{index + 1}: #{query}"
-      
+
       begin
         results = embedding_manager.search_similar(query, limit: 3, threshold: 0.4)
-        
+
         if results.any?
           puts "  ✓ 找到 #{results.length} 个结果"
           results.first(2).each do |result|
             similarity = result[:similarity]
             section = result[:section]
             document = section.document
-            
+
             puts "    - #{section.section_title} (#{document.title})"
             puts "      相似度: #{(similarity * 100).round(2)}%"
           end
@@ -156,9 +157,9 @@ class ExistingEmbeddingsGenerator
   def run_all
     puts "SmartRAG Embeddings 重新生成工具"
     puts "=" * 60
-    
+
     regenerate_embeddings_for_existing_sections
-    
+
     puts "\n" + "=" * 60
     puts "重新生成流程完成！"
     puts "=" * 60
@@ -168,7 +169,7 @@ end
 # 命令行使用
 if __FILE__ == $0
   generator = ExistingEmbeddingsGenerator.new
-  
+
   case ARGV[0]
   when "regenerate", nil
     generator.run_all
