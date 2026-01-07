@@ -169,6 +169,13 @@ module SmartRAG
           results = Models::Embedding.nearest_to(vector, limit: limit)
         end
 
+        if results.empty? && options.fetch(:fallback_to_in_memory, true)
+          pool_size = options[:fallback_pool_size] || 1000
+          logger.info "No results from database search, falling back to in-memory similarity (pool_size=#{pool_size})"
+          candidates = Models::Embedding.limit(pool_size).all
+          results = candidates.sort_by { |emb| -calculate_similarity(vector, emb) }.first(limit)
+        end
+
         puts "[DEBUG] search_by_vector: returned #{results.size} results"
 
         # Apply filters
