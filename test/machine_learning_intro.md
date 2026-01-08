@@ -1,4 +1,4 @@
-# 机器学习入门
+﻿# 机器学习入门
 
 机器学习是人工智能的一个分支，它使计算机系统能够从数据中学习并改进性能，而无需明确编程。
 
@@ -72,3 +72,15 @@
 - R² 分数
 
 机器学习在当今世界有着广泛的应用，从推荐系统到医疗诊断，再到自动驾驶汽车，都在改变着我们的生活方式。
+
+## English Summary
+
+Machine learning enables systems to learn from data. It introduces supervised, unsupervised, and reinforcement learning, along with common algorithms and evaluation metrics.
+
+## 日本語サマリー
+
+機械学習はデータから学習する技術です。教師あり・教師なし・強化学習と代表的なアルゴリズム、評価指標を説明します。
+
+## Résumé en français
+
+L'apprentissage automatique permet d'apprendre à partir des données. Ce document présente les types d'apprentissage, les algorithmes courants et les métriques d'évaluation.

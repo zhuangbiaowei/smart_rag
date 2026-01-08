@@ -94,3 +94,15 @@ element.addEventListener('click', () => {
 - **模块化**: `import/export`
 
 JavaScript 是现代 Web 开发的核心技术之一，配合 HTML 和 CSS 构建交互式的 Web 应用程序。
+
+## English Summary
+
+JavaScript powers web development in browsers and Node.js. This guide covers syntax, functions, async programming with Promise and async/await, and DOM manipulation.
+
+## 日本語サマリー
+
+JavaScript はブラウザと Node.js で動作する言語です。基本文法、関数、非同期処理（Promise、async/await）、DOM 操作を扱います。
+
+## Résumé en français
+
+JavaScript est un langage dynamique pour le web. Ce guide présente la syntaxe, les fonctions, l'asynchrone (Promise, async/await) et la manipulation du DOM.

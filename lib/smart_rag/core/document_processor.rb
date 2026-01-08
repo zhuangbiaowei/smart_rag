@@ -230,8 +230,16 @@ module SmartRAG
       def convert_to_markdown(file_path, options = {})
         @logger.info "Converting #{file_path} to markdown"
 
+        ext = File.extname(file_path).downcase
+        if ['.md', '.markdown'].include?(ext)
+          @logger.info "Detected markdown source; skipping conversion"
+          return File.read(file_path)
+        end
+
         # Use markitdown bridge for conversion
         require_relative 'markitdown_bridge'
+
+
 
         max_retries = options[:max_retries] || 3
         retry_delay = options[:retry_delay] || 1
@@ -412,19 +420,22 @@ module SmartRAG
       def detect_language(text)
         return 'en' if text.nil? || text.empty?
 
-        # Simple heuristic based on character ranges
-        # Check Japanese first (more specific ranges)
-        if text =~ /[\u3040-\u309f\u30a0-\u30ff]/
-          'ja'
-          # Check Korean
-        elsif text =~ /[\uac00-\ud7af]/
-          'ko'
-          # Check Chinese
-        elsif text =~ /[\u4e00-\u9fff]/
-          'zh'
-        else
-          'en'
-        end
+        # Heuristic: decide by CJK character ratios to avoid short mixed-language bias.
+        ja_count = text.scan(/[\u3040-\u309f\u30a0-\u30ff]/).length
+        ko_count = text.scan(/[\uac00-\ud7af]/).length
+        zh_count = text.scan(/[\u4e00-\u9fff]/).length
+        cjk_total = ja_count + ko_count + zh_count
+
+        return 'en' if cjk_total.zero?
+
+        ja_ratio = ja_count.to_f / cjk_total
+        ko_ratio = ko_count.to_f / cjk_total
+        zh_ratio = zh_count.to_f / cjk_total
+
+        return 'ja' if ja_ratio >= 0.3 && ja_ratio > zh_ratio && ja_ratio > ko_ratio
+        return 'ko' if ko_ratio >= 0.3 && ko_ratio > zh_ratio
+
+        'zh'
       rescue StandardError => e
         @logger.warn "Language detection failed: #{e.message}, defaulting to 'en'"
         'en'

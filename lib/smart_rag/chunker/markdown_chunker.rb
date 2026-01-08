@@ -75,6 +75,9 @@ module SmartRAG
         first_h1_processed = false
         first_h1_title = nil
         first_h1_skipped = false
+        intro_lines = []
+        intro_text = nil
+        intro_pending = false
 
         lines.each_with_index do |line, idx|
           # Check if this line is a heading
@@ -99,9 +102,24 @@ module SmartRAG
                 if content_lines && content_lines.length > 1
                   # Remove the heading line
                   section_content = clean_chunk_content(content_lines[1..-1].join)
+                  if intro_pending && intro_text && section_content.length > 0
+                    section_content = [intro_text, section_content].join("\n\n")
+                    intro_pending = false
+                  elsif intro_pending && intro_text && section_content.empty?
+                    section_content = intro_text
+                    intro_pending = false
+                  end
                   if section_content.length > 0
                     chunks << { title: current_chunk_title, content: section_content }
                   end
+                end
+              end
+
+              if first_h1_skipped && current_chunk_start.nil? && intro_text.nil?
+                cleaned_intro = clean_chunk_content(intro_lines.join)
+                if cleaned_intro.length > 0
+                  intro_text = cleaned_intro
+                  intro_pending = true
                 end
               end
 
@@ -109,6 +127,8 @@ module SmartRAG
               current_chunk_start = idx
               current_chunk_title = heading_title
             end
+          elsif first_h1_skipped && current_chunk_start.nil?
+            intro_lines << line
           end
         end
 
@@ -118,6 +138,13 @@ module SmartRAG
           content_lines = lines[current_chunk_start...end_idx]
           if content_lines && content_lines.length > 1
             section_content = clean_chunk_content(content_lines[1..-1].join)
+            if intro_pending && intro_text && section_content.length > 0
+              section_content = [intro_text, section_content].join("\n\n")
+              intro_pending = false
+            elsif intro_pending && intro_text && section_content.empty?
+              section_content = intro_text
+              intro_pending = false
+            end
             if section_content.length > 0
               chunks << { title: current_chunk_title, content: section_content }
             end

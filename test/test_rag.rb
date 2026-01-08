@@ -487,6 +487,73 @@ class RAGSearchTester
     end
   end
 
+  # 测试7: 多语言全文搜索
+  def test_multilingual_fulltext_search
+    separator("测试7: 多语言全文搜索")
+
+    test_cases = [
+      {
+        query: "Python Programming",
+        expected_document: "Python Programming Basics",
+        language: "en",
+        description: "English fulltext search",
+      },
+      {
+        query: "天文学",
+        expected_document: "天文学の基礎",
+        language: "ja",
+        description: "Japanese fulltext search",
+      },
+      {
+        query: "Strategie Marketing",
+        expected_document: "Strategie Marketing",
+        language: "fr",
+        description: "French fulltext search",
+      },
+    ]
+
+    test_cases.each do |test_case|
+      puts "\n测试: #{test_case[:description]}"
+      puts "查询: #{test_case[:query]}"
+      puts "语言: #{test_case[:language]}"
+      puts "预期文档: #{test_case[:expected_document]}"
+
+      results = @smart_rag.fulltext_search(
+        test_case[:query],
+        limit: 3,
+        language: test_case[:language],
+        include_content: true,
+      )
+
+      if results[:results].any?
+        top_result = results[:results].first
+        actual_document = top_result[:title].to_s
+
+        puts "实际文档: #{actual_document}"
+
+        passed = actual_document.include?(test_case[:expected_document]) ||
+                 test_case[:expected_document].include?(actual_document)
+
+        record_test(
+          "多语言全文搜索 - #{test_case[:description]}",
+          passed,
+          query: test_case[:query],
+          expected: test_case[:expected_document],
+          actual: actual_document,
+          language: test_case[:language],
+        )
+      else
+        record_test(
+          "多语言全文搜索 - #{test_case[:description]}",
+          false,
+          query: test_case[:query],
+          language: test_case[:language],
+          error: "No results",
+        )
+      end
+    end
+  end
+
   # 测试7: 不同 alpha 值的混合搜索
   def test_alpha_values
     separator("测试7: 不同 alpha 值的混合搜索")
@@ -705,6 +772,7 @@ class RAGSearchTester
       test_cross_domain_search
       test_tag_based_search
       test_chinese_semantic_search
+      test_multilingual_fulltext_search
       test_alpha_values
       test_boolean_queries
       test_search_performance
@@ -727,7 +795,7 @@ class RAGSearchTester
     else
       puts "未找到测试: #{test_name}"
       puts "可用测试: vector_search, fulltext_search, hybrid_search, cross_domain_search,
-             tag_based_search, chinese_semantic_search, alpha_values, boolean_queries,
+             tag_based_search, chinese_semantic_search, multilingual_fulltext_search, alpha_values, boolean_queries,
              search_performance, result_diversity"
     end
   end
@@ -752,6 +820,8 @@ if __FILE__ == $0
     tester.run_test("tag_based_search")
   when "chinese"
     tester.run_test("chinese_semantic_search")
+  when "multilingual"
+    tester.run_test("multilingual_fulltext_search")
   when "alpha"
     tester.run_test("alpha_values")
   when "boolean"
@@ -771,6 +841,7 @@ if __FILE__ == $0
     puts "  cross      - 跨领域搜索测试"
     puts "  tags       - 基于标签的搜索测试"
     puts "  chinese    - 中文语义搜索测试"
+    puts "  multilingual - 多语言全文搜索测试"
     puts "  alpha      - 不同 alpha 值测试"
     puts "  boolean    - 布尔查询测试"
     puts "  performance - 性能测试"

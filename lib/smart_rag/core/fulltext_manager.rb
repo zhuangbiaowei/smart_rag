@@ -40,23 +40,17 @@ module SmartRAG
         raise ArgumentError, 'Section ID cannot be nil' unless section_id
         raise ArgumentError, 'Content cannot be nil' unless content
 
-        # Get text search configuration for language
-        config = get_text_search_config(language)
+        # Decide configs for single or mixed-language tsvector
+        configs = build_language_configs(language, "#{title}\n\n#{content}")
 
         # Prepare tsvector values
         ts_title = if title.to_s.strip.empty?
                      ''
                    else
-                     setweight(
-                       to_tsvector(config, title),
-                       WEIGHTS[:title]
-                     )
+                     build_weighted_vector(configs, title, WEIGHTS[:title])
                    end
 
-        ts_content = setweight(
-          to_tsvector(config, content),
-          WEIGHTS[:content]
-        )
+        ts_content = build_weighted_vector(configs, content, WEIGHTS[:content])
 
         # Combine with weights
         ts_combined = if ts_title.empty?
@@ -384,6 +378,49 @@ module SmartRAG
       # Convert text to tsvector (helper method)
       def to_tsvector(config, text)
         "to_tsvector('#{config}', #{escape_quote(text)})"
+      end
+
+      def build_language_configs(primary_language, text)
+        primary = primary_language.to_s
+        configs = [get_text_search_config(primary)]
+
+        mix = language_mix_ratios(text)
+        return configs if mix[:total].zero?
+
+        secondary = []
+        secondary << 'zh' if primary != 'zh' && mix[:zh] >= 0.2
+        secondary << 'ja' if primary != 'ja' && mix[:ja] >= 0.2
+        secondary << 'ko' if primary != 'ko' && mix[:ko] >= 0.2
+
+        secondary.each do |lang|
+          configs << get_text_search_config(lang)
+        end
+
+        configs.uniq
+      end
+
+      def build_weighted_vector(configs, text, weight)
+        vectors = configs.map { |config| setweight(to_tsvector(config, text), weight) }
+        return vectors.first if vectors.length == 1
+
+        vectors.join(' || ')
+      end
+
+      def language_mix_ratios(text)
+        return { zh: 0.0, ja: 0.0, ko: 0.0, total: 0 } if text.nil? || text.empty?
+
+        ja_count = text.scan(/[\u3040-\u309f\u30a0-\u30ff]/).length
+        ko_count = text.scan(/[\uac00-\ud7af]/).length
+        zh_count = text.scan(/[\u4e00-\u9fff]/).length
+        total = ja_count + ko_count + zh_count
+        return { zh: 0.0, ja: 0.0, ko: 0.0, total: 0 } if total.zero?
+
+        {
+          zh: zh_count.to_f / total,
+          ja: ja_count.to_f / total,
+          ko: ko_count.to_f / total,
+          total: total
+        }
       end
 
       # Escape quotes for SQL

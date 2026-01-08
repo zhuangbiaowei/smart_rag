@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby
+﻿#!/usr/bin/env ruby
 
 require "./lib/smart_rag"
 require "logger"
@@ -114,6 +114,27 @@ class TestDocumentImporter
         tags: %w[创业 商业 投资 风险投资 产品开发],
         category: "商业",
       },
+      {
+        file: "python_basics_en.md",
+        title: "Python Programming Basics",
+        tags: %w[programming Python basics OOP data-structures],
+        category: "技术",
+        language: "en",
+      },
+      {
+        file: "astronomy_basics_ja.md",
+        title: "天文学の基礎",
+        tags: %w[天文 宇宙 恒星 惑星 ブラックホール],
+        category: "科学",
+        language: "ja",
+      },
+      {
+        file: "marketing_strategies_fr.md",
+        title: "Strategie Marketing",
+        tags: %w[marketing business marque numerique CRM],
+        category: "商业",
+        language: "fr",
+      },
     ]
   end
 
@@ -134,7 +155,6 @@ class TestDocumentImporter
 
     # 检查文档是否已存在
     unless force || !document_exists?(doc_info[:title])
-      @smart_rag.logger.info("文档已存在，跳过: #{doc_info[:title]}")
       return { success: true, skipped: true, title: doc_info[:title] }
     end
 
@@ -151,10 +171,6 @@ class TestDocumentImporter
         },
       )
 
-      @smart_rag.logger.info(
-        "✓ 导入成功: #{doc_info[:title]} (ID: #{result[:document_id]}, Sections: #{result[:section_count]})"
-      )
-
       {
         success: true,
         document_id: result[:document_id],
@@ -169,10 +185,6 @@ class TestDocumentImporter
 
   # 导入所有文档
   def import_all(force: false)
-    @smart_rag.logger.info("=" * 60)
-    @smart_rag.logger.info("开始导入测试文档")
-    @smart_rag.logger.info("=" * 60)
-
     results = {
       successful: [],
       failed: [],
@@ -181,8 +193,6 @@ class TestDocumentImporter
     }
 
     documents_info.each_with_index do |doc_info, index|
-      @smart_rag.logger.info("\n[#{index + 1}/#{documents_info.length}] 处理: #{doc_info[:title]}")
-
       result = import_document(doc_info, force: force)
 
       if result[:success]
@@ -218,27 +228,14 @@ class TestDocumentImporter
     end
 
     # 显示数据库统计
-    stats = @smart_rag.statistics
-    @smart_rag.logger.info("\n数据库统计:")
-    @smart_rag.logger.info("  文档总数: #{stats[:document_count]}")
-    @smart_rag.logger.info("  章节数: #{stats[:section_count]}")
-    @smart_rag.logger.info("  嵌入数: #{stats[:embedding_count]}")
-    @smart_rag.logger.info("  标签数: #{stats[:tag_count]}")
   end
 
   # 清理所有测试文档
   def clean_all
-    @smart_rag.logger.info("清理所有测试文档...")
-
     docs = @smart_rag.list_documents(per_page: 100)
     docs[:documents].each do |doc|
       result = @smart_rag.remove_document(doc[:id])
-      @smart_rag.logger.info(
-        "删除: #{doc[:title]} (Sections: #{result[:deleted_sections]})"
-      )
     end
-
-    @smart_rag.logger.info("清理完成")
   end
 end
 

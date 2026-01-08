@@ -480,19 +480,15 @@ module SmartRAG
         0
       end
 
-      def apply_domain_boost(response, query_text, _options)
-        expected = infer_expected_categories(query_text)
-        return response if expected.empty?
+      def apply_domain_boost(response, _query_text, options)
+        options ||= {}
+        expected = Array(options[:expected_categories] || options[:expected_category]).compact
+        return normalize_categories(response) if expected.empty?
 
         results = response[:results] || []
         return response if results.empty?
 
-        results.each do |result|
-          metadata = result[:metadata] || {}
-          normalized = normalize_category(metadata[:category], metadata[:document_title])
-          metadata[:category] = normalized if normalized
-          result[:metadata] = metadata
-        end
+        normalize_categories(response)
 
         boosted = results.sort_by do |result|
           metadata = result[:metadata] || {}
@@ -501,71 +497,23 @@ module SmartRAG
           match ? 0 : 1
         end
 
-        ensure_expected_category_results(boosted, expected)
         response.merge(results: boosted)
       end
 
-      def infer_expected_categories(query_text)
-        text = query_text.to_s
-        categories = []
-        categories << "数学" if text.include?("数学")
-        categories << "技术" if text.include?("计算机") || text.include?("技术")
-        categories << "历史" if text.include?("历史") || text.include?("工业革命")
-        categories << "科学" if text.include?("科学") || text.include?("生物")
-        categories.uniq
-      end
-
-      def ensure_expected_category_results(results, expected)
-        return if expected.empty?
-
-        present_categories = results.map { |r| (r[:metadata] || {})[:category].to_s }
-        missing = expected.reject { |exp| present_categories.any? { |c| c.include?(exp) } }
-        return if missing.empty?
-
-        docs = ::SmartRAG::Models::SourceDocument.all
-        missing.each do |exp|
-          doc = docs.find do |d|
-            metadata = parse_metadata(d.metadata)
-            category = normalize_category(metadata[:category], d.title).to_s
-            category.include?(exp)
-          end
-          next unless doc
-
-          section = ::SmartRAG::Models::SourceSection
-            .where(document_id: doc.id)
-            .order(:section_number)
-            .first
-          next unless section
-
-          results.unshift(
-            {
-              section: section,
-              combined_score: 1.0,
-              vector_score: 0.0,
-              text_score: 1.0,
-              metadata: { category: normalize_category(parse_metadata(doc.metadata)[:category], doc.title), document_title: doc.title }
-            }
-          )
+      def normalize_categories(response)
+        results = response[:results] || []
+        results.each do |result|
+          metadata = result[:metadata] || {}
+          normalized = normalize_category(metadata[:category], metadata[:document_title])
+          metadata[:category] = normalized if normalized
+          result[:metadata] = metadata
         end
+        response.merge(results: results)
       end
 
-      def parse_metadata(raw)
-        return {} if raw.nil?
-        return raw if raw.is_a?(Hash)
-
-        parsed = JSON.parse(raw)
-        parsed.each_with_object({}) { |(k, v), h| h[k.to_sym] = v }
-      rescue StandardError
-        {}
-      end
-
-      def normalize_category(category, title)
+      def normalize_category(category, _title)
         cat = category.to_s
         return cat if cat.empty?
-
-        if cat == "科学" && title.to_s.match?(/数学|微积分/)
-          return "数学"
-        end
 
         cat
       end

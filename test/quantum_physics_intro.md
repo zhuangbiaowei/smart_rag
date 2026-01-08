@@ -72,3 +72,15 @@ $$\Delta x \cdot \Delta p \geq \frac{\hbar}{2}$$
 - 重力仪
 
 量子物理学不仅挑战了我们对现实的理解，还为我们带来了革命性的技术应用。
+
+## English Summary
+
+Quantum physics studies microscopic behavior, including wave-particle duality, superposition, and uncertainty. It also introduces quantum computing and communication.
+
+## 日本語サマリー
+
+量子物理は波動と粒子の二重性、重ね合わせ、測不準原理などを扱います。量子計算や量子通信の応用も紹介します。
+
+## Résumé en français
+
+La physique quantique décrit le monde microscopique, la dualité onde-particule et la superposition. Elle ouvre la voie au calcul et à la communication quantiques.

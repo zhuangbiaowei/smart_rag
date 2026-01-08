@@ -10,8 +10,10 @@ module SmartRAG
       class UnsupportedFormatError < StandardError; end
 
       def initialize
-        @python_available = check_python_markitdown
+        @python_cmd = detect_python_cmd
+        @python_available = !@python_cmd.nil?
       end
+
 
       # Convert a file to markdown
       # @param [String] file_path Path to the file to convert

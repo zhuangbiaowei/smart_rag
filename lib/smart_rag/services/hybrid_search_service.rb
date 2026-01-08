@@ -115,8 +115,6 @@ module SmartRAG
             deduplicate: deduplicate
           )
 
-          combined_results = add_category_fallback_results(combined_results, query, language)
-
           # Limit results
           final_results = combined_results.first(limit)
 
@@ -263,53 +261,12 @@ module SmartRAG
         alpha
       end
 
-      def add_category_fallback_results(results, query, language)
-        term = query.to_s.strip
-        return results unless language == :zh && term.length <= 2
-
-        category_docs = documents_with_category(term)
-        return results if category_docs.empty?
-
-        preferred_keywords = preferred_title_keywords(term)
-        existing_doc_ids = results.map { |r| extract_document_id(r[:section]) }.compact
-
-        category_docs.each do |doc|
-          next if existing_doc_ids.include?(doc.id)
-
-          title_score = score_title_match(doc.title, preferred_keywords)
-          section = ::SmartRAG::Models::SourceSection
-            .where(document_id: doc.id)
-            .order(:section_number)
-            .first
-          next unless section
-
-          results << {
-            section: section,
-            combined_score: title_score,
-            vector_score: 0.0,
-            text_score: title_score
-          }
+      def extract_document_id(section)
+        if section.is_a?(Hash)
+          section[:document_id] || section['document_id']
+        else
+          section&.document_id
         end
-
-        results.sort_by { |r| -r[:combined_score] }
-      end
-
-      def documents_with_category(term)
-        ::SmartRAG::Models::SourceDocument.all.select do |doc|
-          metadata = parse_metadata(doc.metadata)
-          category = metadata["category"] || metadata[:category]
-          category.to_s.include?(term)
-        end
-      end
-
-      def parse_metadata(raw)
-        return {} if raw.nil?
-        return raw if raw.is_a?(Hash)
-
-        parsed = JSON.parse(raw)
-        symbolize_keys(parsed)
-      rescue StandardError
-        {}
       end
 
       def symbolize_keys(hash)
@@ -317,34 +274,6 @@ module SmartRAG
 
         hash.each_with_object({}) do |(key, value), result|
           result[key.to_sym] = value
-        end
-      end
-
-      def preferred_title_keywords(term)
-        case term
-        when '科学'
-          %w[科学 物理 生物 数学 天文]
-        when '历史'
-          %w[历史 文明 革命 二战 战争]
-        when '技术'
-          %w[技术 Python JavaScript 机器学习]
-        else
-          []
-        end
-      end
-
-      def score_title_match(title, keywords)
-        return 0.6 if title.to_s.strip.empty?
-        return 0.9 if keywords.any? { |kw| title.include?(kw) }
-
-        0.4
-      end
-
-      def extract_document_id(section)
-        if section.is_a?(Hash)
-          section[:document_id] || section['document_id']
-        else
-          section&.document_id
         end
       end
 
