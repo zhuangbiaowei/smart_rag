@@ -48,6 +48,7 @@ module SmartRAG
       # Split content by markdown headings - Handles nested headings properly
       def split_by_headings(content)
         chunks = []
+        content = content.sub(/\A\uFEFF/, '')
         lines = content.lines
         return chunks if lines.empty?
 
@@ -85,8 +86,8 @@ module SmartRAG
             heading_level = match[1].length
             heading_title = match[2].strip
 
-            # Handle the very first line - if it's h1, note it as potential document title
-            if idx == 0 && heading_level == 1
+            # Handle the first H1 - treat as document title (skip for chunking)
+            if !first_h1_processed && heading_level == 1
               first_h1_title = heading_title
               first_h1_processed = true
               first_h1_skipped = true

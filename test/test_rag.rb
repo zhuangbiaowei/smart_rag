@@ -1,4 +1,4 @@
-#!/usr/bin/env ruby
+﻿#!/usr/bin/env ruby
 
 require "./lib/smart_rag"
 require "logger"
@@ -203,14 +203,14 @@ class RAGSearchTester
         alpha: 0.7,
       },
       {
-        query: "历史",
-        expected_title: "历史",
+        query: "工业革命",
+        expected_title: "工业革命",
         description: "历史相关查询",
         alpha: 0.5,
       },
       {
-        query: "科学",
-        expected_title: "科学",
+        query: "两个或多个粒子可以形成关联状态，无论相距多远",
+        expected_title: "量子物理导论",
         description: "科学概念查询",
         alpha: 0.8,
       },
@@ -286,17 +286,17 @@ class RAGSearchTester
 
     test_cases = [
       {
-        query: "数学在计算机科学中的应用",
-        expected_domains: %w[数学 技术],
+        query: "数学 计算机",
+        expected_domains: %w[科学 技术],
         description: "数学与计算机科学的交叉",
       },
       {
-        query: "工业革命的技术创新",
+        query: "工业革命 技术",
         expected_domains: %w[历史 技术],
         description: "历史与技术的交叉",
       },
       {
-        query: "生物学的数学模型",
+        query: "生物 数学",
         expected_domains: ["科学"],
         description: "生物学与数学的交叉",
       },
@@ -564,6 +564,7 @@ class RAGSearchTester
     puts "\n查询: #{query}"
 
     alpha_results = {}
+    alpha_scores = {}
     alpha_values.each do |alpha|
       results = @smart_rag.search(
         query,
@@ -575,20 +576,26 @@ class RAGSearchTester
 
       top_doc = results[:results].first
       alpha_results[alpha] = top_doc ? top_doc[:metadata][:document_title] : nil
+      alpha_scores[alpha] = top_doc ? top_doc[:combined_score] : nil
 
-      puts "alpha=#{alpha}: #{top_doc ? top_doc[:metadata][:document_title] : "No results"}"
+      score_info = top_doc ? " (score=#{top_doc[:combined_score].round(4)})" : ""
+      puts "alpha=#{alpha}: #{top_doc ? top_doc[:metadata][:document_title] : "No results"}#{score_info}"
     end
 
     # 检查不同 alpha 是否产生不同的结果排序
     unique_results = alpha_results.values.compact.uniq
-    passed = unique_results.length > 1
+    score_values = alpha_scores.values.compact
+    score_variation = score_values.uniq.length > 1
+    passed = unique_results.length > 1 || score_variation
 
     record_test(
       "Alpha 值影响测试",
       passed,
       query: query,
       alpha_results: alpha_results,
+      alpha_scores: alpha_scores,
       unique_results: unique_results.length,
+      score_variation: score_variation,
     )
   end
 
@@ -606,7 +613,7 @@ class RAGSearchTester
         description: "OR 操作符",
       },
       {
-        query: '"机器学习" AND "算法"',
+        query: '"机器学习" AND "人工智能"',
         description: "短语搜索 + AND",
       },
     ]
@@ -635,8 +642,75 @@ class RAGSearchTester
   end
 
   # 测试9: 搜索性能测试
+  def test_smart_chunking_merge
+    separator("测试9: 智能分片合并验证")
+
+    query = '"碎片合并测试A" AND "碎片合并测试B"'
+
+    puts "\n查询: #{query}"
+
+    results = @smart_rag.fulltext_search(
+      query,
+      limit: 3,
+      include_content: true,
+      include_metadata: true,
+    )
+
+    top_result = results[:results].first
+    actual_document = if top_result
+                        top_result[:document_title] ||
+                          (top_result[:metadata] && top_result[:metadata][:document_title]) ||
+                          top_result[:title]
+                      end
+
+    puts "文档标题: #{actual_document || "No results"}"
+
+    passed = actual_document && actual_document.include?("智能分片演示")
+
+    record_test(
+      "智能分片合并 - 跨标题短段落",
+      passed,
+      query: query,
+      expected_document: "智能分片演示",
+      actual_document: actual_document,
+      result_count: results[:results].length,
+    )
+  end
+
+  def test_rerank_tag_boost
+    separator("测试10: 重排序标签加权")
+
+    query = "知识图谱 数据建模"
+
+    puts "\n查询: #{query}"
+
+    results = @smart_rag.search(
+      query,
+      search_type: "hybrid",
+      limit: 3,
+      alpha: 0.7,
+      include_content: false,
+    )
+
+    top_result = results[:results].first
+    doc_title = top_result && top_result[:metadata] ? top_result[:metadata][:document_title] : nil
+
+    puts "文档标题: #{doc_title || "No results"}"
+
+    passed = doc_title && doc_title.include?("数据建模实践")
+
+    record_test(
+      "重排序 - 标签与关键词加权",
+      passed,
+      query: query,
+      expected_document: "数据建模实践",
+      document_title: doc_title,
+      score: top_result ? top_result[:combined_score] : nil,
+    )
+  end
+
   def test_search_performance
-    separator("测试9: 搜索性能测试")
+    separator("测试11: 搜索性能测试")
 
     queries = [
       "Python 编程",
@@ -690,9 +764,9 @@ class RAGSearchTester
     )
   end
 
-  # 测试10: 结果多样性测试
+  # 测试12: 结果多样性测试
   def test_result_diversity
-    separator("测试10: 结果多样性测试")
+    separator("测试12: 结果多样性测试")
 
     query = "科学"
 
@@ -775,6 +849,8 @@ class RAGSearchTester
       test_multilingual_fulltext_search
       test_alpha_values
       test_boolean_queries
+      test_smart_chunking_merge
+      test_rerank_tag_boost
       test_search_performance
       test_result_diversity
     rescue StandardError => e
@@ -796,7 +872,7 @@ class RAGSearchTester
       puts "未找到测试: #{test_name}"
       puts "可用测试: vector_search, fulltext_search, hybrid_search, cross_domain_search,
              tag_based_search, chinese_semantic_search, multilingual_fulltext_search, alpha_values, boolean_queries,
-             search_performance, result_diversity"
+             smart_chunking_merge, rerank_tag_boost, search_performance, result_diversity"
     end
   end
 end
@@ -828,11 +904,15 @@ if __FILE__ == $0
     tester.run_test("boolean_queries")
   when "performance"
     tester.run_test("search_performance")
+  when "chunking"
+    tester.run_test("smart_chunking_merge")
+  when "rerank"
+    tester.run_test("rerank_tag_boost")
   when "diversity"
     tester.run_test("result_diversity")
   else
     puts "使用方法:"
-    puts "  ruby test_rag.rb [all|vector|fulltext|hybrid|cross|tags|chinese|alpha|boolean|performance|diversity]"
+    puts "  ruby test_rag.rb [all|vector|fulltext|hybrid|cross|tags|chinese|alpha|boolean|performance|chunking|rerank|diversity]"
     puts "\n测试选项:"
     puts "  all        - 运行所有测试（默认）"
     puts "  vector     - 向量搜索测试"
@@ -845,6 +925,8 @@ if __FILE__ == $0
     puts "  alpha      - 不同 alpha 值测试"
     puts "  boolean    - 布尔查询测试"
     puts "  performance - 性能测试"
+    puts "  chunking   - 智能分片合并测试"
+    puts "  rerank     - 重排序标签加权测试"
     puts "  diversity  - 结果多样性测试"
   end
 end

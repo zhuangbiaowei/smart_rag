@@ -127,8 +127,14 @@ module SmartRAG
         # Get text search configuration for language
         config = get_text_search_config(language)
 
-        # Use plainto_tsquery for natural language queries
-        "plainto_tsquery('#{config}', #{escape_quote(text)})"
+        # Use plainto_tsquery for single-term queries
+        terms = text.strip.split(/\s+/).reject(&:empty?)
+        return "plainto_tsquery('#{config}', #{escape_quote(text)})" if terms.length <= 1
+
+        # For multi-term queries, use OR to avoid overly strict matching
+        joined = terms.map { |term| "plainto_tsquery('#{config}', #{escape_quote(term)})" }
+                      .join(' || ')
+        "(#{joined})"
       end
 
       # Build tsquery for phrase queries
@@ -189,7 +195,33 @@ module SmartRAG
         end
 
         # Wrap in parentheses to ensure proper precedence and type handling
-        query_expr = query_parts.join(' ')
+        operators = ['&&', '||', '!!']
+        normalized = []
+        query_parts.each do |part|
+          next if part.to_s.strip.empty?
+
+          if operators.include?(part)
+            normalized << part
+            next
+          end
+
+          if normalized.any?
+            prev = normalized.last
+            if !operators.include?(prev)
+              normalized << '&&'
+            end
+          end
+
+          normalized << part
+        end
+
+        while normalized.any? && operators.include?(normalized.last)
+          normalized.pop
+        end
+
+        return "plainto_tsquery('#{config}', #{escape_quote(parsed[:original])})" if normalized.empty?
+
+        query_expr = normalized.join(' ')
         "(#{query_expr})::tsquery"
       end
 

@@ -166,6 +166,56 @@ module SmartRAG
       }
     end
 
+    # List tags with pagination
+    def list_tags(options = {})
+      page = [options[:page]&.to_i || 1, 1].max
+      per_page = options[:per_page]
+      per_page = if per_page.nil? || per_page.to_s.empty?
+          20
+        else
+          per_page.to_i
+        end
+
+      dataset = ::SmartRAG::Models::Tag.dataset
+
+      if options[:search] && !options[:search].empty?
+        search_term = "%#{options[:search]}%"
+        dataset = dataset.where(Sequel.ilike(:name, search_term))
+      end
+
+      total_count = dataset.count
+
+      tags = dataset
+        .order(Sequel.asc(:name))
+        .limit(per_page)
+        .offset((page - 1) * per_page)
+        .map do |tag|
+        {
+          id: tag.id,
+          name: tag.name,
+          parent_id: tag.parent_id
+        }
+      end
+
+      {
+        tags: tags,
+        total_count: total_count,
+        page: page,
+        per_page: per_page,
+        total_pages: (total_count.to_f / per_page).ceil,
+      }
+    rescue StandardError => e
+      @logger.error "Error listing tags: #{e.message}"
+      {
+        tags: [],
+        total_count: 0,
+        page: 1,
+        per_page: per_page || 20,
+        total_pages: 0,
+        error: e.message,
+      }
+    end
+
     # Search interface
     def search(query, options = {})
       if options.key?(:search_type) && options[:search_type].nil?

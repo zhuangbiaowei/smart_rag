@@ -333,7 +333,18 @@ module SmartRAG
           section_number: result[:section_number]
         }
 
-        metadata.merge!(result[:metadata]) if result[:metadata]
+        if result[:metadata]
+          if result[:metadata].is_a?(String)
+            begin
+              parsed = JSON.parse(result[:metadata])
+              metadata.merge!(parsed) if parsed.is_a?(Hash)
+            rescue JSON::ParserError
+              # Ignore malformed metadata strings
+            end
+          elsif result[:metadata].is_a?(Hash)
+            metadata.merge!(result[:metadata])
+          end
+        end
         metadata
       end
 

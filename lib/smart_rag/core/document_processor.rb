@@ -5,6 +5,7 @@ require 'tempfile'
 require_relative '../../smart_rag'
 require_relative '../models'
 require_relative '../chunker/markdown_chunker'
+require_relative '../smart_chunking/pipeline'
 
 module SmartRAG
   module Core
@@ -284,9 +285,10 @@ module SmartRAG
       # @param [Hash] metadata Document metadata
       # @param [Hash] options Document options
       # @return [::SmartRAG::Models::SourceDocument]
-      def create_or_update_document(source, metadata, _options = {})
+      def create_or_update_document(source, metadata, options = {})
+        original_url = options[:url] || metadata[:url] || source
         doc_attributes = {
-          url: source,
+          url: original_url,
           title: metadata[:title] || File.basename(source),
           author: metadata[:author],
           description: metadata[:description],
@@ -315,12 +317,20 @@ module SmartRAG
       # @param [Hash] options Chunking options
       # @return [Array<Hash>] Array of chunk hashes
       def chunk_content(markdown_content, options = {})
-        chunker = options[:chunker] || ::SmartRAG::Chunker::MarkdownChunker.new(
-          chunk_size: options[:chunk_size] || @default_chunk_size,
-          overlap: options[:overlap] || @default_overlap
-        )
+        use_smart = options.fetch(:smart_chunking, true)
 
-        chunks = chunker.chunk(markdown_content)
+        if use_smart
+          token_limit = options[:chunk_token_num] || 400
+          doc_type = options[:doc_type] || :general
+          pipeline = ::SmartRAG::SmartChunking::Pipeline.new(token_limit: token_limit)
+          chunks = pipeline.chunk(markdown_content, doc_type: doc_type, options: options)
+        else
+          chunker = options[:chunker] || ::SmartRAG::Chunker::MarkdownChunker.new(
+            chunk_size: options[:chunk_size] || @default_chunk_size,
+            overlap: options[:overlap] || @default_overlap
+          )
+          chunks = chunker.chunk(markdown_content)
+        end
         @logger.info "Created #{chunks.length} chunks"
         chunks
       end

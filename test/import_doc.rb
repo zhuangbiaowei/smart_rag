@@ -49,6 +49,24 @@ class TestDocumentImporter
         category: "技术",
       },
       {
+        file: "smart_chunking_demo.md",
+        title: "智能分片演示",
+        tags: %w[智能分片 合并 结构化段落],
+        category: "技术",
+      },
+      {
+        file: "data_modeling_primer.md",
+        title: "数据建模实践",
+        tags: %w[数据建模 知识图谱 实体关系 schema],
+        category: "技术",
+      },
+      {
+        file: "data_modeling_cheatsheet.md",
+        title: "数据建模速查",
+        tags: %w[数据建模 schema 约束 索引],
+        category: "技术",
+      },
+      {
         file: "quantum_physics_intro.md",
         title: "量子物理导论",
         tags: %w[物理 量子力学 科学 波粒二象性 量子计算],
@@ -168,6 +186,7 @@ class TestDocumentImporter
         metadata: {
           category: doc_info[:category],
           source: "test_documents",
+          language: doc_info[:language],
         },
       )
 

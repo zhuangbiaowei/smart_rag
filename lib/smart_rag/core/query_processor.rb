@@ -120,7 +120,10 @@ module SmartRAG
 
         # Enrich results with additional metadata
         enriched = enrich_results(search_results, query_text, options)
-        apply_domain_boost(enriched, query_text, options) if search_type == :hybrid
+        if search_type == :hybrid
+          apply_domain_boost(enriched, query_text, options)
+          enriched = diversify_results_by_category(enriched, options)
+        end
         enriched
       rescue ArgumentError
         raise
@@ -509,6 +512,44 @@ module SmartRAG
           result[:metadata] = metadata
         end
         response.merge(results: results)
+      end
+
+      def diversify_results_by_category(response, options = {})
+        results = response[:results] || []
+        return response if results.length < 2
+
+        diversify = options.fetch(:diversify_categories, true)
+        return response unless diversify
+
+        groups = []
+        group_map = {}
+
+        results.each do |result|
+          metadata = result[:metadata] || {}
+          category = metadata[:category].to_s
+          category = "uncategorized" if category.empty?
+
+          unless group_map.key?(category)
+            group_map[category] = []
+            groups << category
+          end
+
+          group_map[category] << result
+        end
+
+        diversified = []
+        loop do
+          added = false
+          groups.each do |category|
+            next if group_map[category].empty?
+
+            diversified << group_map[category].shift
+            added = true
+          end
+          break unless added
+        end
+
+        response.merge(results: diversified)
       end
 
       def normalize_category(category, _title)

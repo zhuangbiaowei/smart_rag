@@ -13,6 +13,16 @@ rescue => e
   puts "Warning: Could not load .env file: #{e.message}"
 end
 
+require "rbconfig"
+
+def windows?
+  /mswin|mingw|cygwin/i.match?(RbConfig::CONFIG["host_os"])
+end
+
+def running_as_root?
+  Process.respond_to?(:uid) && Process.uid == 0
+end
+
 def load_db_config
   require_relative "lib/smart_rag/config"
   SmartRAG::Config.load[:database]
@@ -49,7 +59,7 @@ namespace :db do
     port = config[:port] || 5432
     username = config[:username] || "postgres"
 
-    if host == "localhost" && Process.uid == 0
+    if host == "localhost" && running_as_root? && !windows?
       # Running as root, try with sudo
       begin
         system("sudo", "-u", username, "createdb", "-h", host, "-p", port.to_s, database)
@@ -91,7 +101,7 @@ namespace :db do
     port = config[:port] || 5432
     username = config[:username] || "postgres"
 
-    if host == "localhost" && Process.uid == 0
+    if host == "localhost" && running_as_root? && !windows?
       # Running as root, try with sudo
       begin
         system("sudo", "-u", username, "dropdb", "-h", host, "-p", port.to_s, "--if-exists", database)

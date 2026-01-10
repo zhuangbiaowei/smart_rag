@@ -17,7 +17,10 @@ module SmartRAG
       DEFAULT_CONFIG = {
         # RRF parameters
         rrf_k: 60, # RRF constant (higher = more weight to lower ranks)
-        default_alpha: 0.7, # Weight for vector search results (0.0-1.0)
+        default_alpha: 0.95, # Weight for vector search results (0.0-1.0)
+        vector_similarity_weight: 0.3,
+        rerank_limit: 64,
+        fusion_method: :weighted_sum,
 
         # Search parameters
         default_limit: 20,
@@ -94,20 +97,22 @@ module SmartRAG
           include_explanations = options.fetch(:include_explanations, config[:include_explanations])
           query_embedding = options[:query_embedding]
 
-          @logger.info "Hybrid search: '#{query}', language: #{language}, limit: #{limit}, alpha: #{alpha}"
+          rerank_limit = normalize_rerank_limit(options[:rerank_limit] || config[:rerank_limit], limit)
+          recall_limit = [rerank_limit, limit].max
+
+          @logger.info "Hybrid search: '#{query}', language: #{language}, limit: #{limit}, alpha: #{alpha}, recall_limit: #{recall_limit}"
 
           # Execute both search methods
           start_time = Time.now
           @logger.debug 'Starting text search...'
-          text_results = perform_text_search(query, language, limit, filters)
+          text_results = perform_text_search(query, language, recall_limit, filters)
           @logger.debug "Text search completed: #{text_results.length} results"
 
           @logger.debug 'Starting vector search...'
-          vector_results = perform_vector_search(query, query_embedding, limit, filters)
+          vector_results = perform_vector_search(query, query_embedding, recall_limit, filters, options)
           @logger.debug "Vector search completed: #{vector_results.length} results"
 
-          # Combine results using weighted RRF
-          combined_results = combine_with_weighted_rrf(
+          combined_results = combine_results(
             text_results,
             vector_results,
             alpha: alpha,
@@ -115,8 +120,30 @@ module SmartRAG
             deduplicate: deduplicate
           )
 
-          # Limit results
-          final_results = combined_results.first(limit)
+          if combined_results.empty?
+            @logger.info "Hybrid search fallback: relaxing query and thresholds"
+            relaxed_query = relax_query(query)
+            text_results = perform_text_search(relaxed_query, language, recall_limit, filters)
+            vector_results = perform_vector_search(relaxed_query, query_embedding, recall_limit, filters, options.merge(fallback_threshold: 0.05))
+
+            combined_results = combine_results(
+              text_results,
+              vector_results,
+              alpha: alpha,
+              k: rrf_k,
+              deduplicate: deduplicate
+            )
+          end
+
+          reranked = rerank_results(
+            combined_results.first(rerank_limit),
+            query,
+            text_results: text_results,
+            vector_results: vector_results,
+            vector_similarity_weight: options[:vector_similarity_weight] || alpha || config[:vector_similarity_weight]
+          )
+
+          final_results = reranked.first(limit)
 
           @logger.debug "Before enrichment: final_results count=#{final_results.length}"
 
@@ -139,6 +166,7 @@ module SmartRAG
               language: language,
               alpha: alpha,
               rrf_k: rrf_k,
+              rerank_limit: rerank_limit,
               text_result_count: text_results.length,
               vector_result_count: vector_results.length,
               combined_score_stats: calculate_score_stats(final_results)
@@ -254,7 +282,8 @@ module SmartRAG
         return alpha if length == 0
 
         # Favor fulltext for short queries where exact keyword match is strong.
-        if language == :zh && length <= 2
+        lang = language.to_s
+        if (lang == 'zh' || lang.start_with?('zh_')) && length <= 4
           return [alpha, 0.3].min
         end
 
@@ -304,18 +333,18 @@ module SmartRAG
         end
       end
 
-      def perform_vector_search(query, query_embedding, limit, filters)
+      def perform_vector_search(query, query_embedding, limit, filters, options = {})
         if query_embedding
           # Use pre-computed embedding (more efficient)
           tags = filters[:tags]
           if tags && !tags.empty?
-            embedding_manager.search_by_vector_with_tags(query_embedding, tags, limit: limit)
+            embedding_manager.search_by_vector_with_tags(query_embedding, tags, options.merge(limit: limit))
           else
-            embedding_manager.search_by_vector(query_embedding, limit: limit)
+            embedding_manager.search_by_vector(query_embedding, options.merge(limit: limit))
           end
         else
           # Fallback to query text (will generate embedding internally)
-          embedding_manager.search_similar(query, limit: limit)
+          embedding_manager.search_similar(query, options.merge(limit: limit))
         end
       end
 
@@ -356,10 +385,233 @@ module SmartRAG
         end.sort_by { |r| -r[:combined_score] }
       end
 
+      def combine_results(text_results, vector_results, alpha:, k:, deduplicate:)
+        case config[:fusion_method]
+        when :rrf
+          combine_with_weighted_rrf(text_results, vector_results, alpha: alpha, k: k, deduplicate: deduplicate)
+        else
+          combine_with_weighted_scores(text_results, vector_results, alpha: alpha, deduplicate: deduplicate)
+        end
+      end
+
+      def combine_with_weighted_scores(text_results, vector_results, alpha:, deduplicate:)
+        text_scores = build_text_score_map(text_results)
+        vector_scores = build_vector_score_map(vector_results)
+
+        normalized_text = normalize_scores(text_scores)
+        normalized_vector = normalize_scores(vector_scores)
+
+        combined = {}
+        text_results.each do |result|
+          key = extract_result_key(result)
+          combined[key] ||= { section: normalize_result_section(result), text_score: 0.0, vector_score: 0.0 }
+          combined[key][:text_score] = normalized_text[extract_result_section_id(result)] || 0.0
+        end
+
+        vector_results.each do |result|
+          key = extract_result_key(result)
+          combined[key] ||= { section: normalize_result_section(result), text_score: 0.0, vector_score: 0.0 }
+          combined[key][:vector_score] = normalized_vector[extract_result_section_id(result)] || 0.0
+        end
+
+        combined.map do |_key, data|
+          text_score = data[:text_score] * config[:fulltext_weight_boost]
+          vector_score = data[:vector_score] * config[:vector_weight_boost]
+          combined_score = alpha * vector_score + (1 - alpha) * text_score
+          {
+            section: data[:section],
+            combined_score: combined_score,
+            vector_score: vector_score,
+            text_score: text_score
+          }
+        end.sort_by { |r| -r[:combined_score] }
+      end
+
+      def normalize_rerank_limit(rerank_limit, limit)
+        rerank_limit = rerank_limit.to_i
+        rerank_limit = limit * 2 if rerank_limit <= 0
+        base = [rerank_limit, limit].max
+        ((base + 63) / 64) * 64
+      end
+
+      def rerank_results(results, query, text_results:, vector_results:, vector_similarity_weight:)
+        return results if results.empty?
+
+        tkweight = 1.0 - vector_similarity_weight.to_f
+        vtweight = vector_similarity_weight.to_f
+
+        vector_map = build_vector_score_map(vector_results)
+
+        query_tokens = tokenize(query)
+        return results if query_tokens.empty?
+        if query_tokens.length >= 6
+          vtweight = [vtweight, 0.2].min
+          tkweight = 1.0 - vtweight
+        end
+
+        results.map do |result|
+          section = result[:section]
+          content = extract_section_content(section)
+          title = extract_section_title(section)
+          tags = extract_section_tags(section)
+
+          token_score = token_similarity(query_tokens, content, title, tags)
+          vector_score = vector_map[extract_section_id(section)] || 0.0
+          if token_score <= 0.0 && query_tokens.length >= 3
+            vector_score *= 0.3
+          end
+          rank_feature = token_score > 0 ? rank_feature_score(query_tokens, tags) : 0.0
+          rerank_score = (tkweight * token_score) + (vtweight * vector_score) + rank_feature
+
+          result.merge(
+            rerank_score: rerank_score,
+            combined_score: rerank_score
+          )
+        end.sort_by { |r| -r[:combined_score] }
+      end
+
+      def build_text_score_map(text_results)
+        text_results.each_with_object({}) do |result, map|
+          section_id = extract_result_section_id(result)
+          next unless section_id
+
+          score = result[:rank_score] || 0.0
+          map[section_id] = score
+        end
+      end
+
+      def build_vector_score_map(vector_results)
+        vector_results.each_with_object({}) do |result, map|
+          section_id = extract_result_section_id(result)
+          next unless section_id
+
+          score = result[:boosted_score] || result[:similarity] || 0.0
+          map[section_id] = score
+        end
+      end
+
+      def extract_result_section_id(result)
+        return result[:section_id] if result.is_a?(Hash) && result[:section_id]
+        return result[:section][:id] if result.is_a?(Hash) && result[:section].is_a?(Hash)
+        return result[:section].id if result.is_a?(Hash) && result[:section].respond_to?(:id)
+        return result.id if result.respond_to?(:id)
+
+        nil
+      end
+
+      def extract_section_id(section)
+        return section[:id] if section.is_a?(Hash)
+        return section.id if section.respond_to?(:id)
+
+        nil
+      end
+
+      def extract_section_content(section)
+        if section.is_a?(Hash)
+          section[:content] || section['content'] || ''
+        else
+          section&.content.to_s
+        end
+      end
+
+      def extract_section_title(section)
+        if section.is_a?(Hash)
+          section[:title] || section[:section_title] || section['title'] || ''
+        else
+          section&.section_title.to_s
+        end
+      end
+
+      def extract_section_tags(section)
+        if section.is_a?(Hash)
+          tags = section[:tags] || section['tags']
+          return tags if tags.is_a?(Array)
+          return tags.split(',').map(&:strip) if tags.is_a?(String)
+        elsif section.respond_to?(:tags)
+          return section.tags.map(&:name)
+        end
+
+        []
+      end
+
+      def tokenize(text)
+        return [] if text.nil?
+
+        tokens = []
+        text.scan(/[\p{Han}]+|[A-Za-z0-9_]+/) do |chunk|
+          if chunk.match?(/\p{Han}/)
+            if chunk.length <= 2
+              tokens << chunk
+            else
+              tokens << chunk
+              0.upto(chunk.length - 2) do |idx|
+                tokens << chunk[idx, 2]
+              end
+            end
+          else
+            tokens << chunk.downcase
+          end
+        end
+        tokens
+      end
+
+      def token_similarity(query_tokens, content, title, tags)
+        query_tokens = query_tokens.uniq
+        doc_tokens = tokenize(content)
+        return 0.0 if doc_tokens.empty?
+
+        title_tokens = tokenize(title)
+        token_counts = Hash.new(0)
+        doc_tokens.each { |t| token_counts[t] += 1 }
+        title_tokens.each { |t| token_counts[t] += 2 }
+        Array(tags).each { |t| token_counts[t.to_s.downcase] += 5 }
+
+        hits = 0
+        query_tokens.each do |token|
+          hits += token_counts[token]
+        end
+
+        hits.to_f / query_tokens.length
+      end
+
+      def rank_feature_score(query_tokens, tags)
+        tag_tokens = Array(tags).map { |t| t.to_s.downcase }
+        tag_hits = query_tokens.count { |token| tag_tokens.include?(token) }
+        tag_score = tag_hits.to_f / [query_tokens.length, 1].max
+
+        tag_score
+      end
+
+      def normalize_scores(score_map)
+        return {} if score_map.empty?
+
+        values = score_map.values
+        min = values.min
+        max = values.max
+        if (max - min).abs < 1e-9
+          return score_map.transform_values { |v| v > 0 ? 1.0 : 0.0 }
+        end
+
+        score_map.transform_values { |v| (v - min) / (max - min) }
+      end
+
       def normalize_result_section(result)
         return result[:section] if result.is_a?(Hash) && result[:section]
 
         result
+      end
+
+      def relax_query(query)
+        return query if query.nil?
+
+        relaxed = query.to_s.dup
+        relaxed.gsub!(/["']/, ' ')
+        relaxed.gsub!(/\b(AND|OR|NOT)\b/i, ' ')
+        relaxed.gsub!(/[()]/, ' ')
+        relaxed.gsub!(/\s+/, ' ')
+        relaxed.strip!
+
+        relaxed.empty? ? query : relaxed
       end
 
       def extract_result_key(result)
