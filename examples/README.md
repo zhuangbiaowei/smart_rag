@@ -1,6 +1,6 @@
 # SmartRAG Examples
 
-These examples are extracted and organized from `USAGE_EXAMPLES.md`.
+These examples are extracted and organized from `docs/USAGE_EXAMPLES.md`.
 
 ## Prerequisites
 
@@ -31,7 +31,7 @@ These examples are extracted and organized from `USAGE_EXAMPLES.md`.
 - Error handling and retry:
   - `ruby examples/06_error_handling_and_retry.rb`
 
-## Mapping To `USAGE_EXAMPLES.md`
+## Mapping To `docs/USAGE_EXAMPLES.md`
 
 - `01_quick_start.rb`: Quick Start
 - `02_document_management.rb`: Document Management
@@ -40,4 +40,3 @@ These examples are extracted and organized from `USAGE_EXAMPLES.md`.
 - `05_advanced_patterns.rb`: Advanced Usage Patterns + Q&A + Caching
 - `06_error_handling_and_retry.rb`: Error Handling + Retry Logic
 - `common.rb`: shared setup/config/logging utilities
-
