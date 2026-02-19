@@ -105,9 +105,9 @@ search:
 # LLM Configuration for tags and summarization
 llm:
   provider: <%= ENV['LLM_PROVIDER'] || 'openai' %>
-  api_key: <%= ENV['LLM_API_KEY'] %>
-  endpoint: <%= ENV['LLM_ENDPOINT'] || 'https://api.openai.com/v1/chat/completions' %>
-  model: <%= ENV['LLM_MODEL'] || 'gpt-4' %>
+  api_key: <%= ENV['LLM_API_KEY'] || 'ollama-local' %>
+  endpoint: <%= ENV['LLM_ENDPOINT'] || 'http://localhost:11434/v1/chat/completions' %>
+  model: <%= ENV['LLM_MODEL'] || 'qwen3' %>
 
   # Generation parameters
   temperature: <%= ENV['LLM_TEMPERATURE'] || 0.3 %>
