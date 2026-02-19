@@ -41,8 +41,18 @@ module SmartRAG
 
       private
 
+      def detect_python_cmd
+        candidates = %w[python3 python]
+
+        candidates.find do |cmd|
+          system(cmd, "-c", "import markitdown", out: File::NULL, err: File::NULL)
+        end
+      end
+
       def check_python_markitdown
-        system("python3 -c \"import markitdown\" 2>/dev/null")
+        return false if @python_cmd.nil?
+
+        system(@python_cmd, "-c", "import markitdown", out: File::NULL, err: File::NULL)
       end
 
       def call_python_convert(file_path)
@@ -62,7 +72,7 @@ module SmartRAG
               sys.exit(1)
         PYTHON
 
-        output, status = Open3.capture2e("python3", "-c", script)
+        output, status = Open3.capture2e(@python_cmd, "-c", script)
 
         if status.success?
           output

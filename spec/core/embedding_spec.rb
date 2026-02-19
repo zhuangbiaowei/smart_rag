@@ -169,7 +169,7 @@ RSpec.describe SmartRAG::Core::Embedding do
     it "returns embedding statistics for a document" do
       allow(SmartRAG::Models::SourceSection).to receive(:where).and_return(double(map: [10, 20]))
       allow(SmartRAG::Models::Embedding).to receive(:where).and_return(double(all: [embedding, embedding]))
-      allow(embedding).to receive(:model).and_return("text-embedding-ada-002")
+      allow(embedding).to receive(:model).and_return("qwen3-embedding")
 
       stats = embedding_manager.document_stats(document)
 
@@ -177,7 +177,7 @@ RSpec.describe SmartRAG::Core::Embedding do
       expect(stats[:total_sections]).to eq(2)
       expect(stats[:embedded_sections]).to eq(2)
       expect(stats[:embedding_rate]).to eq(100.0)
-      expect(stats[:models_used]).to include("text-embedding-ada-002")
+      expect(stats[:models_used]).to include("qwen3-embedding")
     end
 
     it "handles document without sections" do
@@ -233,9 +233,9 @@ RSpec.describe SmartRAG::Core::Embedding do
       end
 
       it "filters by model" do
-        allow(embedding).to receive(:model).and_return("text-embedding-ada-002")
+        allow(embedding).to receive(:model).and_return("qwen3-embedding")
 
-        filtered = embedding_manager.send(:apply_filters, results, model: "text-embedding-ada-002")
+        filtered = embedding_manager.send(:apply_filters, results, model: "qwen3-embedding")
 
         expect(filtered).not_to be_empty
       end

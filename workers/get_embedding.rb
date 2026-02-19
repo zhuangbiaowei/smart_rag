@@ -1,6 +1,7 @@
 SmartPrompt.define_worker :get_embedding do
-  use "SiliconFlow"
-  model "Qwen/Qwen3-Embedding-0.6B"
+  # Use local Ollama by default for embedding generation.
+  use "OllamaEmbedding"
+  model ENV["EMBEDDING_MODEL"] || "qwen3-embedding"
   prompt params[:text]
   embeddings(1024)
 end

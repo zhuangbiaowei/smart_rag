@@ -474,9 +474,12 @@ module SmartRAG
         # Handle nil or empty response
         return { categories: [], content_tags: [] } if response.nil? || response.empty?
 
+        raw_content = extract_response_content(response)
+        return { categories: [], content_tags: [] } if raw_content.to_s.strip.empty?
+
         # Try to parse as JSON first
         begin
-          parsed = JSON.parse(response.dig("choices", 0, "message", "content"))
+          parsed = JSON.parse(raw_content)
           return {
                    categories: (parsed["categories"] || []).map { |c| clean_tag_name(c) }.compact,
                    content_tags: (parsed["content_tags"] || []).map { |c| clean_tag_name(c) }.compact,
@@ -491,19 +494,19 @@ module SmartRAG
         content_tags = []
 
         # Look for JSON-like patterns
-        if response =~ /\{\s*"categories"\s*:\s*\[([^\]]+)\]/
+        if raw_content =~ /\{\s*"categories"\s*:\s*\[([^\]]+)\]/
           categories_str = $1
           categories = categories_str.scan(/"([^"]+)"/).flatten
         end
 
-        if response =~ /"content_tags"\s*:\s*\[([^\]]+)\]/
+        if raw_content =~ /"content_tags"\s*:\s*\[([^\]]+)\]/
           content_str = $1
           content_tags = content_str.scan(/"([^"]+)"/).flatten
         end
 
         # If still no results, try to extract quoted strings
         if categories.empty? && content_tags.empty?
-          all_quotes = response.scan(/"([^"]+)"/).flatten
+          all_quotes = raw_content.scan(/"([^"]+)"/).flatten
           if all_quotes.any?
             # Heuristic: first few are categories, rest are content tags
             midpoint = [all_quotes.length / 3, 2].max
@@ -516,6 +519,19 @@ module SmartRAG
           categories: categories.map { |c| clean_tag_name(c) }.compact,
           content_tags: content_tags.map { |c| clean_tag_name(c) }.compact,
         }
+      end
+
+      def extract_response_content(response)
+        case response
+        when Hash
+          response.dig("choices", 0, "message", "content") ||
+            response.dig(:choices, 0, :message, :content) ||
+            response["content"] ||
+            response[:content] ||
+            response.to_s
+        else
+          response.to_s
+        end
       end
 
       def prepare_section_text(section)

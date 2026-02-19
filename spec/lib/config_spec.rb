@@ -31,9 +31,9 @@ RSpec.describe SmartRAG::Config do
           password: 'test_pass'
         },
         embedding: {
-          provider: 'openai',
+          provider: 'local',
           dimensions: 1024,
-          model: 'text-embedding-ada-002'
+          model: 'qwen3-embedding'
         },
         fulltext_search: {
           languages: ['en', 'zh', 'ja'],
@@ -96,7 +96,7 @@ RSpec.describe SmartRAG::Config do
           adapter: <%= "postgre" + "sql" %>
           env: <%= ENV['SMARTRAG_ENV'] || 'development' %>
         embedding:
-          provider: openai
+          provider: local
           dimensions: 1024
         test:
           value: <%= "computed_" + "value" %>
@@ -137,7 +137,7 @@ RSpec.describe SmartRAG::Config do
       config_without_dimensions = File.join(@config_dir, 'test_no_dimensions.yml')
       File.write(config_without_dimensions, {
         database: { adapter: 'postgresql' },
-        embedding: { provider: 'openai' }
+        embedding: { provider: 'local' }
       }.to_yaml)
 
       config = SmartRAG::Config.load(config_without_dimensions)
@@ -261,7 +261,7 @@ production:
     it 'accepts valid configuration' do
       config = {
         database: { adapter: 'postgresql', database: 'test' },
-        embedding: { provider: 'openai', dimensions: 1024 }
+        embedding: { provider: 'local', dimensions: 1024 }
       }
 
       expect { SmartRAG::Config.send(:validate_config, config) }.not_to raise_error

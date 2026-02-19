@@ -75,6 +75,8 @@ module SmartRAG
         language = options[:language]
         alpha = config[:default_alpha]
         rrf_k = config[:rrf_k]
+        @last_vector_search_failed = false
+        @last_text_search_failed = false
 
         begin
           # Validate query
@@ -104,13 +106,13 @@ module SmartRAG
 
           # Execute both search methods
           start_time = Time.now
-          @logger.debug 'Starting text search...'
-          text_results = perform_text_search(query, language, recall_limit, filters)
-          @logger.debug "Text search completed: #{text_results.length} results"
-
           @logger.debug 'Starting vector search...'
           vector_results = perform_vector_search(query, query_embedding, recall_limit, filters, options)
           @logger.debug "Vector search completed: #{vector_results.length} results"
+
+          @logger.debug 'Starting text search...'
+          text_results = perform_text_search(query, language, recall_limit, filters)
+          @logger.debug "Text search completed: #{text_results.length} results"
 
           combined_results = combine_results(
             text_results,
@@ -120,7 +122,7 @@ module SmartRAG
             deduplicate: deduplicate
           )
 
-          if combined_results.empty?
+          if combined_results.empty? && !@last_vector_search_failed && !@last_text_search_failed
             @logger.info "Hybrid search fallback: relaxing query and thresholds"
             relaxed_query = relax_query(query)
             text_results = perform_text_search(relaxed_query, language, recall_limit, filters)
@@ -179,6 +181,8 @@ module SmartRAG
           @logger.info "Hybrid search completed: #{final_results.length} results in #{execution_time}ms"
 
           response
+        rescue ::SmartRAG::Errors::HybridSearchServiceError
+          raise
         rescue ArgumentError => e
           # Return empty results on validation error
           execution_time = ((Time.now - start_time) * 1000).round
@@ -331,21 +335,34 @@ module SmartRAG
         else
           fulltext_manager.search_by_text(query, language, limit)
         end
+      rescue StandardError => e
+        @last_text_search_failed = true
+        @logger.warn "Text search failed, continuing with vector-only results: #{e.message}"
+        []
       end
 
       def perform_vector_search(query, query_embedding, limit, filters, options = {})
-        if query_embedding
-          # Use pre-computed embedding (more efficient)
-          tags = filters[:tags]
-          if tags && !tags.empty?
-            embedding_manager.search_by_vector_with_tags(query_embedding, tags, options.merge(limit: limit))
-          else
-            embedding_manager.search_by_vector(query_embedding, options.merge(limit: limit))
-          end
+        @last_vector_search_failed = false
+        query_embedding ||= embedding_manager.send(:generate_query_embedding, query, options)
+
+        # Use embedding-based search path by default for predictable error handling.
+        tags = filters[:tags]
+        if tags && !tags.empty?
+          embedding_manager.search_by_vector_with_tags(query_embedding, tags, options.merge(limit: limit))
         else
-          # Fallback to query text (will generate embedding internally)
-          embedding_manager.search_similar(query, options.merge(limit: limit))
+          embedding_manager.search_by_vector(query_embedding, options.merge(limit: limit))
         end
+      rescue PG::ConnectionBad => e
+        @last_vector_search_failed = true
+        raise ::SmartRAG::Errors::HybridSearchServiceError, "Vector database unavailable: #{e.message}"
+      rescue PG::Error => e
+        @last_vector_search_failed = true
+        @logger.warn "Vector search temporarily unavailable, continuing with text-only results: #{e.message}"
+        []
+      rescue StandardError => e
+        @last_vector_search_failed = true
+        @logger.warn "Vector search failed, continuing with text-only results: #{e.message}"
+        []
       end
 
       def combine_with_weighted_rrf(text_results, vector_results, alpha:, k:, deduplicate:)

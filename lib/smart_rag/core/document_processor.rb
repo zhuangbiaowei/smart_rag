@@ -318,18 +318,23 @@ module SmartRAG
       # @return [Array<Hash>] Array of chunk hashes
       def chunk_content(markdown_content, options = {})
         use_smart = options.fetch(:smart_chunking, true)
+        legacy_chunker = options[:chunker] || ::SmartRAG::Chunker::MarkdownChunker.new(
+          chunk_size: options[:chunk_size] || @default_chunk_size,
+          overlap: options[:overlap] || @default_overlap
+        )
 
         if use_smart
           token_limit = options[:chunk_token_num] || 400
           doc_type = options[:doc_type] || :general
           pipeline = ::SmartRAG::SmartChunking::Pipeline.new(token_limit: token_limit)
           chunks = pipeline.chunk(markdown_content, doc_type: doc_type, options: options)
+          # Fallback for plain text or heading-less content where smart chunking yields no sections.
+          if chunks.empty? && markdown_content.to_s.strip.length > 0
+            @logger.info 'Smart chunking returned no chunks, falling back to MarkdownChunker'
+            chunks = legacy_chunker.chunk(markdown_content)
+          end
         else
-          chunker = options[:chunker] || ::SmartRAG::Chunker::MarkdownChunker.new(
-            chunk_size: options[:chunk_size] || @default_chunk_size,
-            overlap: options[:overlap] || @default_overlap
-          )
-          chunks = chunker.chunk(markdown_content)
+          chunks = legacy_chunker.chunk(markdown_content)
         end
         @logger.info "Created #{chunks.length} chunks"
         chunks

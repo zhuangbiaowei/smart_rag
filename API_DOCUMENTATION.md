@@ -699,7 +699,7 @@ doc_id = result[:document_id]
 # 旧代码 (v0.1)
 begin
   smart_rag.search('query')
-rescue StandardError => e
+rescue => e
   # 处理错误
 end
 
@@ -826,3 +826,13 @@ puts "\nGenerated tags: #{tags[:content_tags].join(', ')}"
 ## 许可证
 
 MIT License
+
+## 方法签名速查
+
+```ruby
+initialize(config = {})
+add_document(document_path, { title: 'My Document', generate_embeddings: true })
+search(query, options = {})
+create_topic(title, description, options = {})
+statistics()
+```

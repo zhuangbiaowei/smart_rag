@@ -16,6 +16,8 @@ RSpec.describe "Natural language query processing integration", type: :integrati
   let(:mock_embedding_service) { instance_double("SmartRAG::Services::EmbeddingService") }
   let(:mock_summarization_service) { instance_double("SmartRAG::Services::SummarizationService") }
   let(:mock_hybrid_search_service) { instance_double("SmartRAG::Services::HybridSearchService") }
+  let(:mock_vector_search_service) { instance_double("SmartRAG::Services::VectorSearchService") }
+  let(:mock_fulltext_search_service) { instance_double("SmartRAG::Services::FulltextSearchService") }
 
   before do
     # Mock the smart_prompt engine to avoid actual LLM calls
@@ -56,6 +58,55 @@ RSpec.describe "Natural language query processing integration", type: :integrati
       ],
       metadata: { total_count: 1 }
     )
+
+    # Mock vector/fulltext services for deterministic integration behavior.
+    allow(SmartRAG::Services::VectorSearchService).to receive(:new).and_return(mock_vector_search_service)
+    allow(mock_vector_search_service).to receive(:search_by_vector) do |_vector, options|
+      doc_id = options[:document_ids]&.first || 1
+      doc = Struct.new(:id, :title, :url, keyword_init: true).new(
+        id: doc_id,
+        title: "Mock Document #{doc_id}",
+        url: "https://example.com/doc-#{doc_id}"
+      )
+      section = Struct.new(:id, :content, :section_title, :document_id, :document, keyword_init: true).new(
+        id: 1,
+        content: "Machine learning is a subset of artificial intelligence.",
+        section_title: "Introduction to Machine Learning",
+        document_id: doc_id,
+        document: doc
+      )
+
+      [
+        {
+          section: section,
+          similarity: 0.95,
+          embedding: Struct.new(:id).new(1)
+        }
+      ]
+    end
+
+    allow(SmartRAG::Services::FulltextSearchService).to receive(:new).and_return(mock_fulltext_search_service)
+    allow(mock_fulltext_search_service).to receive(:search) do |_query, options|
+      doc_id = options[:document_ids]&.first || 1
+      doc = Struct.new(:id, :title, :url, keyword_init: true).new(
+        id: doc_id,
+        title: "Mock Document #{doc_id}",
+        url: "https://example.com/doc-#{doc_id}"
+      )
+      section = Struct.new(:id, :content, :section_title, :document_id, :document, keyword_init: true).new(
+        id: 2,
+        content: "Deep learning uses neural networks with multiple layers.",
+        section_title: "Deep Learning Overview",
+        document_id: doc_id,
+        document: doc
+      )
+
+      {
+        query: "mock",
+        results: [{ section: section, rank_score: 0.85 }],
+        metadata: { total_count: 1 }
+      }
+    end
 
     # Mock summarization service - return different answers based on question
     allow(SmartRAG::Services::SummarizationService).to receive(:new).and_return(mock_summarization_service)

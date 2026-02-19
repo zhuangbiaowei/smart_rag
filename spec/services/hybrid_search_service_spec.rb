@@ -41,37 +41,34 @@ RSpec.describe SmartRAG::Services::HybridSearchService do
     end
 
     it "combines results using weighted RRF algorithm" do
-      combined = service.send(:combine_with_weighted_rrf, text_results, vector_results, alpha: 0.7, k: 60)
+      combined = service.send(:combine_with_weighted_rrf, text_results, vector_results, alpha: 0.7, k: 60, deduplicate: true)
 
       expect(combined).to be_an(Array)
       expect(combined.size).to eq(5) # 3 text + 2 new vector results
     end
 
     it "calculates correct combined scores" do
-      combined = service.send(:combine_with_weighted_rrf, text_results, vector_results, alpha: 0.7, k: 60)
+      combined = service.send(:combine_with_weighted_rrf, text_results, vector_results, alpha: 0.7, k: 60, deduplicate: true)
 
       # Result 2 appears in both, so should have highest combined score
-      result_2 = combined.find { |r| r[:section_id] == 2 }
-      expect(result_2[:contributions][:text]).to be true
-      expect(result_2[:contributions][:vector]).to be true
+      result_2 = combined.find { |r| r.dig(:section, :section_id) == 2 }
       expect(result_2[:text_score]).to be > 0
       expect(result_2[:vector_score]).to be > 0
-      expect(result_2[:combined_score]).to eq(result_2[:text_score] + result_2[:vector_score])
+      expect(result_2[:combined_score]).to be_within(1e-12).of((0.7 * result_2[:vector_score]) + (0.3 * result_2[:text_score]))
     end
 
     it "applies correct weights based on alpha parameter" do
       # With alpha = 0.7, vector weight should be 0.7, text weight should be 0.3
-      combined = service.send(:combine_with_weighted_rrf, text_results, vector_results, alpha: 0.7, k: 60)
+      combined = service.send(:combine_with_weighted_rrf, text_results, vector_results, alpha: 0.7, k: 60, deduplicate: true)
 
       # Check that vector results are prioritized
-      vector_only_result = combined.find { |r| r[:section_id] == 4 }
+      vector_only_result = combined.find { |r| r.dig(:section, :section_id) == 4 }
       expect(vector_only_result[:vector_score]).to be > vector_only_result[:text_score]
-      expect(vector_only_result[:contributions][:vector]).to be true
-      expect(vector_only_result[:contributions][:text]).to be false
+      expect(vector_only_result[:text_score]).to eq(0)
     end
 
     it "handles empty text results" do
-      combined = service.send(:combine_with_weighted_rrf, [], vector_results, alpha: 0.5, k: 60)
+      combined = service.send(:combine_with_weighted_rrf, [], vector_results, alpha: 0.5, k: 60, deduplicate: true)
 
       expect(combined.size).to eq(3)
       expect(combined.all? { |r| r[:text_score] == 0 }).to be true
@@ -79,7 +76,7 @@ RSpec.describe SmartRAG::Services::HybridSearchService do
     end
 
     it "handles empty vector results" do
-      combined = service.send(:combine_with_weighted_rrf, text_results, [], alpha: 0.5, k: 60)
+      combined = service.send(:combine_with_weighted_rrf, text_results, [], alpha: 0.5, k: 60, deduplicate: true)
 
       expect(combined.size).to eq(3)
       expect(combined.all? { |r| r[:vector_score] == 0 }).to be true
@@ -90,13 +87,13 @@ RSpec.describe SmartRAG::Services::HybridSearchService do
       text_only = [{ section_id: 1, content: "Text only" }]
       vector_only = [{ section_id: 2, content: "Vector only" }]
 
-      combined = service.send(:combine_with_weighted_rrf, text_only, vector_only, alpha: 0.5, k: 60)
+      combined = service.send(:combine_with_weighted_rrf, text_only, vector_only, alpha: 0.5, k: 60, deduplicate: true)
 
       expect(combined.size).to eq(2)
-      expect(combined.find { |r| r[:section_id] == 1 }[:text_score]).to be > 0
-      expect(combined.find { |r| r[:section_id] == 1 }[:vector_score]).to eq(0)
-      expect(combined.find { |r| r[:section_id] == 2 }[:text_score]).to eq(0)
-      expect(combined.find { |r| r[:section_id] == 2 }[:vector_score]).to be > 0
+      expect(combined.find { |r| r.dig(:section, :section_id) == 1 }[:text_score]).to be > 0
+      expect(combined.find { |r| r.dig(:section, :section_id) == 1 }[:vector_score]).to eq(0)
+      expect(combined.find { |r| r.dig(:section, :section_id) == 2 }[:text_score]).to eq(0)
+      expect(combined.find { |r| r.dig(:section, :section_id) == 2 }[:vector_score]).to be > 0
     end
 
     it "calculates RRF scores correctly" do
@@ -105,41 +102,33 @@ RSpec.describe SmartRAG::Services::HybridSearchService do
       # Result at rank 1 should get: 1 / (k + 1) = 1 / 61
       expected_rank_1_score = 1.0 / (k + 1)
 
-      combined = service.send(:combine_with_weighted_rrf, text_results, [], alpha: 0.5, k: k)
+      combined = service.send(:combine_with_weighted_rrf, text_results, [], alpha: 0.5, k: k, deduplicate: true)
       rank_1_result = combined.first
 
-      # With alpha = 0.5, text weight = 0.5
-      expected_score = 0.5 * expected_rank_1_score
-
-      expect(rank_1_result[:text_score]).to be_within(0.0001).of(expected_rank_1_score * 0.5)
+      expect(rank_1_result[:text_score]).to be_within(0.0001).of(expected_rank_1_score)
     end
 
     it "sorts results by combined score in descending order" do
-      combined = service.send(:combine_with_weighted_rrf, text_results, vector_results, alpha: 0.7, k: 60)
+      combined = service.send(:combine_with_weighted_rrf, text_results, vector_results, alpha: 0.7, k: 60, deduplicate: true)
 
       scores = combined.map { |r| r[:combined_score] }
       expect(scores).to eq(scores.sort.reverse)
     end
 
-    it "includes data from both result sources when available" do
-      combined = service.send(:combine_with_weighted_rrf, text_results, vector_results, alpha: 0.5, k: 60)
+    it "includes scores from both sources when available" do
+      combined = service.send(:combine_with_weighted_rrf, text_results, vector_results, alpha: 0.5, k: 60, deduplicate: true)
 
-      # Result 2 should have merged data
-      result_2 = combined.find { |r| r[:section_id] == 2 }
-      expect(result_2[:data]).to include(content: "Result 2")
-      # Check that result appears in both text and vector
-      expect(result_2[:contributions][:text]).to be true
-      expect(result_2[:contributions][:vector]).to be true
-      # vector_match should be added when both sources have data
-      expect(result_2[:data][:vector_match]).to be true
-      expect(result_2[:data][:vector_similarity]).to eq(0.95)
+      result_2 = combined.find { |r| r.dig(:section, :section_id) == 2 }
+      expect(result_2[:text_score]).to be > 0
+      expect(result_2[:vector_score]).to be > 0
+      expect(result_2[:section]).to include(section_id: 2, content: "Result 2")
     end
 
     it "respects deduplicate parameter" do
       # Same test works for both true and false since deduplicate doesn't affect RRF
       combined = service.send(:combine_with_weighted_rrf, text_results, vector_results, alpha: 0.5, k: 60, deduplicate: true)
 
-      section_ids = combined.map { |r| r[:section_id] }
+      section_ids = combined.map { |r| r.dig(:section, :section_id) }
       expect(section_ids.uniq).to eq(section_ids) # Should be unique just from RRF
     end
   end
@@ -222,17 +211,10 @@ RSpec.describe SmartRAG::Services::HybridSearchService do
     it "calculates statistics for scores" do
       stats = service.send(:calculate_score_stats, results)
 
-      expect(stats).to have_key(:text)
-      expect(stats).to have_key(:vector)
-      expect(stats).to have_key(:combined)
-
-      expect(stats[:text][:min]).to eq(0.2)
-      expect(stats[:text][:max]).to eq(0.4)
-      expect(stats[:text][:avg]).to eq(0.3)
-
-      expect(stats[:vector][:min]).to eq(0.2)
-      expect(stats[:vector][:max]).to eq(0.4)
-      expect(stats[:vector][:avg]).to eq(0.3333333333333333)
+      expect(stats).to include(:min, :max, :avg)
+      expect(stats[:min]).to eq(0.5)
+      expect(stats[:max]).to eq(0.8)
+      expect(stats[:avg]).to eq(0.6333)
     end
 
     it "handles empty results" do
@@ -241,71 +223,17 @@ RSpec.describe SmartRAG::Services::HybridSearchService do
     end
   end
 
-  describe "#generate_explanation" do
-    it "generates explanation for text-only result" do
+  describe "#enrich_results" do
+    it "adds score explanation when requested" do
       result = {
-        contributions: { text: true, vector: false },
-        text_score: 0.015
+        section: { id: 1, section_title: "Title", content: "Body", document_id: 1 },
+        combined_score: 0.5,
+        vector_score: 0.3,
+        text_score: 0.2
       }
 
-      explanation = service.send(:generate_explanation, result)
-      expect(explanation).to include("Text match")
-      expect(explanation).not_to include("Vector")
-    end
-
-    it "generates explanation for vector-only result" do
-      result = {
-        contributions: { text: false, vector: true },
-        vector_similarity: 0.85
-      }
-
-      explanation = service.send(:generate_explanation, result)
-      expect(explanation).to include("Vector similarity")
-      expect(explanation).not_to include("Text match")
-    end
-
-    it "generates explanation for hybrid result" do
-      result = {
-        contributions: { text: true, vector: true },
-        text_score: 0.015,
-        vector_similarity: 0.85
-      }
-
-      explanation = service.send(:generate_explanation, result)
-      expect(explanation).to include("Text match")
-      expect(explanation).to include("Vector similarity")
-      expect(explanation).to include(" + ")
-    end
-  end
-
-  describe "#merge_result_data" do
-    let(:text_data) { { content: "Text content", title: "Text title" } }
-    let(:vector_data) { { similarity: 0.95, model: "text-embedding-ada-002" } }
-
-    it "merges data from both sources when both available" do
-      merged = service.send(:merge_result_data, text_data, vector_data)
-
-      expect(merged).to include(text_data)
-      expect(merged[:vector_similarity]).to eq(0.95)
-      expect(merged[:vector_match]).to be true
-    end
-
-    it "uses text data when only text available" do
-      merged = service.send(:merge_result_data, text_data, nil)
-
-      expect(merged).to eq(text_data)
-      expect(merged[:vector_similarity]).to be_nil
-    end
-
-    it "uses vector data when only vector available" do
-      merged = service.send(:merge_result_data, nil, vector_data)
-
-      expect(merged).to eq(vector_data)
-    end
-
-    it "returns empty hash when both are nil" do
-      merged = service.send(:merge_result_data, nil, nil)
-      expect(merged).to eq({})
+      enriched = service.send(:enrich_results, [result], false, false, true)
+      expect(enriched.first[:score_explanation]).to include("Combined:")
     end
   end
 end

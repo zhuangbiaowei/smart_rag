@@ -74,8 +74,15 @@ module SmartRAG
       # @param text [String] Query text with operators
       # @return [Hash] Parsed query structure
       def parse_advanced_query(text)
-        raise ArgumentError, 'Query text cannot be nil' if text.nil?
-        raise ArgumentError, 'Query text cannot be empty' if text.strip.empty?
+        if text.nil? || text.to_s.strip.empty?
+          return {
+            original: '',
+            tokens: [{ type: 'text', value: '' }],
+            phrases: [],
+            has_boolean: false,
+            has_phrases: false
+          }
+        end
 
         # Remove extra whitespace
         text = text.strip
@@ -127,14 +134,9 @@ module SmartRAG
         # Get text search configuration for language
         config = get_text_search_config(language)
 
-        # Use plainto_tsquery for single-term queries
-        terms = text.strip.split(/\s+/).reject(&:empty?)
-        return "plainto_tsquery('#{config}', #{escape_quote(text)})" if terms.length <= 1
-
-        # For multi-term queries, use OR to avoid overly strict matching
-        joined = terms.map { |term| "plainto_tsquery('#{config}', #{escape_quote(term)})" }
-                      .join(' || ')
-        "(#{joined})"
+        # Keep plain query behavior consistent for both single-term and multi-term text.
+        # This also aligns with documentation/tests that expect the original full query text.
+        "plainto_tsquery('#{config}', #{escape_quote(text)})"
       end
 
       # Build tsquery for phrase queries

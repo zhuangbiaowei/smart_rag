@@ -25,10 +25,10 @@ database:
 # Embedding Configuration
 embedding:
   # Provider can be: openai, azure_openai, local, or custom
-  provider: <%= ENV['EMBEDDING_PROVIDER'] || 'openai' %>
-  api_key: <%= ENV['EMBEDDING_API_KEY'] %>
-  endpoint: <%= ENV['EMBEDDING_ENDPOINT'] || 'https://api.openai.com/v1/embeddings' %>
-  model: <%= ENV['EMBEDDING_MODEL'] || 'text-embedding-ada-002' %>
+  provider: <%= ENV['EMBEDDING_PROVIDER'] || 'local' %>
+  api_key: <%= ENV['EMBEDDING_API_KEY'] || 'ollama-local' %>
+  endpoint: <%= ENV['EMBEDDING_ENDPOINT'] || 'http://localhost:11434/v1/embeddings' %>
+  model: <%= ENV['EMBEDDING_MODEL'] || 'qwen3-embedding' %>
   dimensions: <%= ENV['EMBEDDING_DIMENSIONS'] || 1024 %>
   # Request timeout in seconds
   timeout: 30

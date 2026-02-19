@@ -85,7 +85,7 @@ module SmartRAG
           section_ids = ::SmartRAG::Models::SourceSection.where(document_id: doc_id_i).select_map(:id)
           deleted_embeddings = section_ids.any? ? ::SmartRAG::Models::Embedding.where(source_id: section_ids).delete : 0
           deleted_sections = ::SmartRAG::Models::SourceSection.where(document_id: doc_id_i).delete
-          deleted = ::SmartRAG.db["DELETE FROM source_documents WHERE id = ?", doc_id_i].delete
+          deleted = ::SmartRAG::Models::SourceDocument.where(id: doc_id_i).delete
 
           result = {
             success: deleted > 0,
@@ -116,7 +116,15 @@ module SmartRAG
         created_at: document.created_at,
         updated_at: document.updated_at,
         section_count: document.sections.count,
-        metadata: document.metadata,
+        metadata: begin
+                    if document.metadata.is_a?(String) && !document.metadata.strip.empty?
+                      JSON.parse(document.metadata)
+                    else
+                      document.metadata
+                    end
+                  rescue StandardError
+                    document.metadata
+                  end,
       }
     rescue StandardError => e
       @logger.error "Error getting document #{document_id}: #{e.message}"
@@ -126,12 +134,15 @@ module SmartRAG
     # List documents with pagination
     def list_documents(options = {})
       page = [options[:page]&.to_i || 1, 1].max
-      per_page = options[:per_page]
-      per_page = if per_page.nil? || per_page.to_s.empty?
-          20
-        else
-          per_page.to_i
-        end
+      per_page_raw = options[:per_page]
+      per_page = if per_page_raw.nil? || per_page_raw.to_s.empty?
+                   20
+                 elsif per_page_raw.to_s =~ /\A-?\d+\Z/
+                   per_page_raw.to_i
+                 else
+                   20
+                 end
+      per_page = [[per_page, 1].max, 100].min
 
       dataset = ::SmartRAG::Models::SourceDocument.dataset
 
@@ -162,19 +173,22 @@ module SmartRAG
         total_count: total_count,
         page: page,
         per_page: per_page,
-        total_pages: (total_count.to_f / per_page).ceil,
+        total_pages: [(total_count.to_f / per_page).ceil, 1].max,
       }
     end
 
     # List tags with pagination
     def list_tags(options = {})
       page = [options[:page]&.to_i || 1, 1].max
-      per_page = options[:per_page]
-      per_page = if per_page.nil? || per_page.to_s.empty?
-          20
-        else
-          per_page.to_i
-        end
+      per_page_raw = options[:per_page]
+      per_page = if per_page_raw.nil? || per_page_raw.to_s.empty?
+                   20
+                 elsif per_page_raw.to_s =~ /\A-?\d+\Z/
+                   per_page_raw.to_i
+                 else
+                   20
+                 end
+      per_page = [[per_page, 1].max, 100].min
 
       dataset = ::SmartRAG::Models::Tag.dataset
 
@@ -193,7 +207,8 @@ module SmartRAG
         {
           id: tag.id,
           name: tag.name,
-          parent_id: tag.parent_id
+          parent_id: tag.parent_id,
+          section_count: tag.respond_to?(:sections) ? tag.sections.count : 0
         }
       end
 
@@ -218,6 +233,11 @@ module SmartRAG
 
     # Search interface
     def search(query, options = {})
+      normalized_query = query.to_s.strip
+      raise ArgumentError, "Query text cannot be nil or empty" if normalized_query.empty?
+      raise ArgumentError, "Query too short" if normalized_query.length < 2
+      raise ArgumentError, "Query too long" if normalized_query.length > 1000
+
       if options.key?(:search_type) && options[:search_type].nil?
         raise ArgumentError, "Invalid search_type: nil. Must be 'hybrid', 'vector', or 'fulltext'"
       end
@@ -226,11 +246,11 @@ module SmartRAG
 
       case search_type
       when "hybrid"
-        hybrid_search(query, options.merge(search_type: :hybrid))
+        hybrid_search(normalized_query, options.merge(search_type: :hybrid))
       when "vector"
-        vector_search(query, options.merge(search_type: :vector))
+        vector_search(normalized_query, options.merge(search_type: :vector))
       when "fulltext"
-        fulltext_search(query, options.merge(search_type: :fulltext))
+        fulltext_search(normalized_query, options.merge(search_type: :fulltext))
       else
         raise ArgumentError, "Invalid search_type: #{search_type}. Must be 'hybrid', 'vector', or 'fulltext'"
       end
@@ -238,17 +258,284 @@ module SmartRAG
 
     def vector_search(query, options = {})
       options = options.merge(search_type: :vector)
+      return vector_error_response(query, options, "Search service unavailable") if query_processor.nil?
+      return vector_error_response(query, options, "Search service unavailable") unless query_processor.respond_to?(:process_query)
+
       query_processor.process_query(query, options)
+    rescue StandardError => e
+      @logger.error "Vector search failed: #{e.message}"
+      vector_error_response(query, options, e.message)
     end
 
     def fulltext_search(query, options = {})
       options = options.merge(search_type: :fulltext)
+      return fulltext_error_response(query, options, "Search service unavailable") if query_processor.nil?
+      return fulltext_error_response(query, options, "Search service unavailable") unless query_processor.respond_to?(:process_query)
+
       query_processor.process_query(query, options)
+    rescue StandardError => e
+      @logger.error "Fulltext search failed: #{e.message}"
+      fulltext_error_response(query, options, e.message)
     end
 
     def hybrid_search(query, options = {})
       options = options.merge(search_type: :hybrid)
+      return hybrid_error_response(query, options, "Search service unavailable") if query_processor.nil?
+      return hybrid_error_response(query, options, "Search service unavailable") unless query_processor.respond_to?(:process_query)
+
       query_processor.process_query(query, options)
+    rescue StandardError => e
+      @logger.error "Hybrid search failed: #{e.message}"
+      hybrid_error_response(query, options, e.message)
+    end
+
+    # Generate tags for content
+    def generate_tags(content, options = {})
+      return { content_tags: [], category_tags: [] } if content.to_s.strip.empty?
+
+      context = options[:context]
+      max_tags = options[:max_tags]
+      tag_options = {}
+      tag_options[:max_tags] = max_tags if max_tags
+
+      result = tag_service.generate_tags(content, context, [:en], tag_options)
+      {
+        content_tags: result[:content_tags] || [],
+        category_tags: result[:category_tags] || result[:categories] || []
+      }
+    end
+
+    # Topic APIs
+    def create_topic(title, description = nil, options = {})
+      if description.is_a?(Hash)
+        options = description
+        description = options[:description]
+      end
+
+      topic = ::SmartRAG::Models::ResearchTopic.create!(
+        name: title,
+        description: description || options[:description]
+      )
+
+      Array(options[:tags]).each do |tag_name|
+        next if tag_name.to_s.strip.empty?
+
+        tag = ::SmartRAG::Models::Tag.find_or_create(tag_name.to_s.strip)
+        ::SmartRAG::Models::ResearchTopicTag.find_or_create(
+          research_topic_id: topic.id,
+          tag_id: tag.id
+        )
+      end
+
+      Array(options[:document_ids]).each do |document_id|
+        add_document_to_topic(topic.id, document_id)
+      end
+
+      topic_payload(topic)
+    end
+
+    def get_topic(topic_id)
+      return nil unless topic_id.to_s =~ /\A-?\d+\Z/
+
+      topic = ::SmartRAG::Models::ResearchTopic[topic_id.to_i]
+      return nil unless topic
+
+      topic_payload(topic)
+    rescue StandardError => e
+      @logger.error "Error getting topic #{topic_id}: #{e.message}"
+      nil
+    end
+
+    def list_topics(options = {})
+      page = [options[:page]&.to_i || 1, 1].max
+      per_page_raw = options[:per_page]
+      per_page = if per_page_raw.nil? || per_page_raw.to_s.empty?
+                   20
+                 elsif per_page_raw.to_s =~ /\A-?\d+\Z/
+                   per_page_raw.to_i
+                 else
+                   20
+                 end
+      per_page = 1 if per_page <= 0
+      per_page = [per_page, 100].min
+
+      dataset = ::SmartRAG::Models::ResearchTopic.dataset
+      if options[:search] && !options[:search].to_s.strip.empty?
+        term = "%#{options[:search]}%"
+        dataset = dataset.where(Sequel.ilike(:name, term)).or(Sequel.ilike(:description, term))
+      end
+
+      total_count = dataset.count
+      topics = dataset.order(Sequel.desc(:created_at)).limit(per_page).offset((page - 1) * per_page).all
+
+      {
+        topics: topics.map { |topic| topic_payload(topic) },
+        total_count: total_count,
+        page: page,
+        per_page: per_page,
+        total_pages: (total_count.to_f / per_page).ceil
+      }
+    end
+
+    def update_topic(topic_id, attributes = {})
+      return nil unless topic_id.to_s =~ /\A-?\d+\Z/
+      return nil unless attributes.is_a?(Hash)
+      return nil if attributes.key?(:title) && attributes[:title].nil?
+
+      topic = ::SmartRAG::Models::ResearchTopic[topic_id.to_i]
+      return nil unless topic
+
+      updates = {}
+      updates[:name] = attributes[:title] if attributes.key?(:title)
+      updates[:description] = attributes[:description] if attributes.key?(:description)
+      topic.update(updates) unless updates.empty?
+
+      if attributes.key?(:tags)
+        ::SmartRAG::Models::ResearchTopicTag.where(research_topic_id: topic.id).delete
+        Array(attributes[:tags]).each do |tag_name|
+          next if tag_name.to_s.strip.empty?
+
+          tag = ::SmartRAG::Models::Tag.find_or_create(tag_name.to_s.strip)
+          ::SmartRAG::Models::ResearchTopicTag.find_or_create(
+            research_topic_id: topic.id,
+            tag_id: tag.id
+          )
+        end
+      end
+
+      topic_payload(topic)
+    rescue StandardError => e
+      @logger.error "Error updating topic #{topic_id}: #{e.message}"
+      nil
+    end
+
+    def delete_topic(topic_id)
+      return { success: false } unless topic_id.to_s =~ /\A-?\d+\Z/
+
+      deleted = ::SmartRAG::Models::ResearchTopic.where(id: topic_id.to_i).delete
+      { success: deleted > 0, topic_id: topic_id.to_i }
+    rescue StandardError => e
+      @logger.error "Error deleting topic #{topic_id}: #{e.message}"
+      { success: false, topic_id: topic_id.to_i }
+    end
+
+    def add_document_to_topic(topic_id, document_id)
+      return { success: false, added_sections: 0 } unless topic_id.to_s =~ /\A-?\d+\Z/
+
+      topic = ::SmartRAG::Models::ResearchTopic[topic_id.to_i]
+      return { success: false, added_sections: 0 } unless topic
+
+      sections = ::SmartRAG::Models::SourceSection.where(document_id: document_id.to_i).all
+      added_sections = 0
+
+      sections.each do |section|
+        existing = ::SmartRAG::Models::ResearchTopicSection.find(
+          research_topic_id: topic.id,
+          section_id: section.id
+        )
+        next if existing
+
+        ::SmartRAG::Models::ResearchTopicSection.create(
+          research_topic_id: topic.id,
+          section_id: section.id
+        )
+        added_sections += 1
+      end
+
+      { success: true, topic_id: topic.id, document_id: document_id.to_i, added_sections: added_sections }
+    rescue StandardError => e
+      @logger.error "Error adding document #{document_id} to topic #{topic_id}: #{e.message}"
+      { success: false, topic_id: topic_id.to_i, document_id: document_id.to_i, added_sections: 0 }
+    end
+
+    def remove_document_from_topic(topic_id, document_id)
+      return { success: false, deleted_sections: 0 } unless topic_id.to_s =~ /\A-?\d+\Z/
+
+      topic = ::SmartRAG::Models::ResearchTopic[topic_id.to_i]
+      return { success: false, deleted_sections: 0 } unless topic
+
+      section_ids = ::SmartRAG::Models::SourceSection.where(document_id: document_id.to_i).select_map(:id)
+      deleted_sections = if section_ids.empty?
+                           0
+                         else
+                           ::SmartRAG::Models::ResearchTopicSection
+                             .where(research_topic_id: topic.id, section_id: section_ids)
+                             .delete
+                         end
+
+      { success: true, deleted_sections: deleted_sections }
+    rescue StandardError => e
+      @logger.error "Error removing document #{document_id} from topic #{topic_id}: #{e.message}"
+      { success: false, deleted_sections: 0 }
+    end
+
+    def get_topic_recommendations(topic_id, limit: 5)
+      topic = ::SmartRAG::Models::ResearchTopic[topic_id.to_i]
+      return { topic_id: topic_id.to_i, recommendations: [] } unless topic
+
+      tag_ids = ::SmartRAG::Models::ResearchTopicTag.where(research_topic_id: topic.id).select_map(:tag_id)
+      recommendations = if tag_ids.empty?
+                          []
+                        else
+                          ::SmartRAG::Models::ResearchTopicTag
+                            .where(tag_id: tag_ids)
+                            .exclude(research_topic_id: topic.id)
+                            .group_and_count(:research_topic_id)
+                            .order(Sequel.desc(:count))
+                            .limit(limit)
+                            .map do |row|
+                              related = ::SmartRAG::Models::ResearchTopic[row[:research_topic_id]]
+                              next unless related
+
+                              {
+                                topic_id: related.id,
+                                title: related.name,
+                                score: row[:count]
+                              }
+                            end
+                            .compact
+                        end
+
+      { topic_id: topic.id, recommendations: recommendations }
+    rescue StandardError => e
+      @logger.error "Error getting topic recommendations for #{topic_id}: #{e.message}"
+      { topic_id: topic_id.to_i, recommendations: [] }
+    end
+
+    # Search log APIs
+    def search_logs(limit: 50, search_type: nil, **_options)
+      max_limit = [limit.to_i, 1000].min
+      return [] if max_limit <= 0
+
+      dataset = ::SmartRAG::Models::SearchLog.dataset
+      dataset = dataset.where(search_type: search_type.to_s) if search_type && !search_type.to_s.empty?
+
+      dataset
+        .order(Sequel.desc(:created_at))
+        .limit(max_limit)
+        .all
+        .map do |log|
+          error = nil
+          begin
+            filters_hash = log.respond_to?(:filters_hash) ? log.filters_hash : {}
+            error = filters_hash["error"] || filters_hash[:error]
+          rescue StandardError
+            error = nil
+          end
+
+          {
+            id: log.id,
+            query: log.query,
+            search_type: log.search_type,
+            execution_time_ms: log.execution_time_ms,
+            results_count: log.results_count,
+            created_at: log.created_at,
+            error: error
+          }
+        end
+    rescue StandardError => e
+      @logger.error "Error fetching search logs: #{e.message}"
+      []
     end
 
     # Get system statistics
@@ -354,6 +641,87 @@ module SmartRAG
       else
         :en
       end
+    end
+
+    def topic_payload(topic)
+      tag_names = ::SmartRAG::Models::Tag
+                  .join(:research_topic_tags, tag_id: :id)
+                  .where(research_topic_id: topic.id)
+                  .select_map(:name)
+
+      document_ids = ::SmartRAG::Models::SourceSection
+                     .join(:research_topic_sections, section_id: :id)
+                     .where(research_topic_id: topic.id)
+                     .exclude(document_id: nil)
+                     .distinct
+                     .select_map(:document_id)
+
+      document_count = ::SmartRAG::Models::SourceSection
+                       .join(:research_topic_sections, section_id: :id)
+                       .where(research_topic_id: topic.id)
+                       .exclude(document_id: nil)
+                       .distinct
+                       .count(:document_id)
+
+      {
+        id: topic.id,
+        topic_id: topic.id,
+        title: topic.name,
+        description: topic.description,
+        tags: tag_names.uniq,
+        document_ids: document_ids,
+        document_count: document_count,
+        created_at: topic.created_at,
+        updated_at: topic.respond_to?(:updated_at) ? topic.updated_at : topic.created_at
+      }
+    end
+
+    def vector_error_response(query, options, error_message)
+      {
+        query: query,
+        results: [],
+        search_type: :vector,
+        total_results: 0,
+        metadata: {
+          total_count: 0,
+          execution_time_ms: 0,
+          language: options[:language] || :en,
+          error: error_message
+        }
+      }
+    end
+
+    def fulltext_error_response(query, options, error_message)
+      {
+        query: query,
+        results: {
+          results: [],
+          metadata: {
+            total_count: 0,
+            execution_time_ms: 0,
+            language: options[:language] || :en,
+            error: error_message
+          }
+        },
+        search_type: :fulltext
+      }
+    end
+
+    def hybrid_error_response(query, options, error_message)
+      {
+        query: query,
+        results: [],
+        metadata: {
+          total_count: 0,
+          execution_time_ms: 0,
+          language: options[:language] || :en,
+          alpha: options[:alpha] || 0.7,
+          text_result_count: 0,
+          vector_result_count: 0,
+          multilingual: false,
+          error: error_message
+        }
+      }
     end
   end
 end

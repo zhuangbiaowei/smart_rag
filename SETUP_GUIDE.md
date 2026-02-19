@@ -323,6 +323,15 @@ SMARTRAG_LOG_LEVEL=info
 SMARTRAG_MAX_WORKERS=5
 ```
 
+数据库配置示例（YAML）：
+
+```yaml
+database:
+  adapter: postgresql
+  host: localhost
+  port: 5432
+```
+
 ### 7. 运行测试
 
 ```bash
@@ -567,11 +576,11 @@ UPDATE text_search_configs SET config_name = 'jiebacfg' WHERE language_code = 'z
 ```ruby
 # 检查嵌入模型配置
 config = {
-  llm: {
-    model: 'text-embedding-ada-002',  # OpenAI: 1536维
-    # model: 'text-embedding-3-small',  # OpenAI: 1536维
-    # 或自定义维度
-    dimensions: 1024  # 确保与迁移一致
+  embedding: {
+    provider: 'local',
+    endpoint: 'http://localhost:11434/v1/embeddings',
+    model: 'qwen3-embedding',  # Ollama: 1024维
+    dimensions: 1024           # 确保与迁移一致
   }
 }
 ```

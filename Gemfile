@@ -44,3 +44,7 @@ group :development, :test do
 end
 
 gem "rdbg", "~> 0.1.0"
+
+gem "ostruct", "~> 0.6.3"
+
+gem "benchmark", "~> 0.5.0"

@@ -680,6 +680,12 @@ config = {
 }
 ```
 
+Equivalent YAML key:
+
+```yaml
+adapter: postgresql
+```
+
 ### 3. Efficient Searching
 
 ```ruby
