@@ -7,7 +7,7 @@ RSpec.describe "Documentation Accuracy" do
 
   describe "API Documentation Accuracy" do
     it "documents all public methods in SmartRAG::SmartRAG" do
-      api_doc = File.read('API_DOCUMENTATION.md')
+      api_doc = File.read('docs/API_DOCUMENTATION.md')
 
       # Check that all public methods are documented
       public_methods = [
@@ -40,7 +40,7 @@ RSpec.describe "Documentation Accuracy" do
     end
 
     it "has consistent method signatures between code and API docs" do
-      api_doc = File.read('API_DOCUMENTATION.md')
+      api_doc = File.read('docs/API_DOCUMENTATION.md')
 
       # Check add_document signature
       expect(api_doc).to match(/add_document\([^,)]+,\s*{[^}]+}\)/),
@@ -72,7 +72,7 @@ RSpec.describe "Documentation Accuracy" do
     end
 
     it "documents all configuration options accurately" do
-      api_doc = File.read('API_DOCUMENTATION.md')
+      api_doc = File.read('docs/API_DOCUMENTATION.md')
 
       # Check database configuration options
       expect(api_doc).to include('adapter')
@@ -95,12 +95,12 @@ RSpec.describe "Documentation Accuracy" do
   end
 
   describe "Usage Examples Documentation Accuracy" do
-    let(:usage_doc) { File.read('USAGE_EXAMPLES.md') }
+    let(:usage_doc) { File.read('docs/USAGE_EXAMPLES.md') }
 
     it "has consistent examples with API documentation" do
       # Extract examples from both files and compare
-      api_examples = extract_code_examples('API_DOCUMENTATION.md')
-      usage_examples = extract_code_examples('USAGE_EXAMPLES.md')
+      api_examples = extract_code_examples('docs/API_DOCUMENTATION.md')
+      usage_examples = extract_code_examples('docs/USAGE_EXAMPLES.md')
 
       # Check that common patterns are consistent
       # Both should show the same initialize pattern
@@ -151,7 +151,7 @@ RSpec.describe "Documentation Accuracy" do
   end
 
   describe "Setup Guide Documentation Accuracy" do
-    let(:setup_doc) { File.read('SETUP_GUIDE.md') }
+    let(:setup_doc) { File.read('docs/SETUP_GUIDE.md') }
 
     it "has accurate system requirements" do
       # Check requirements match actual requirements
@@ -211,7 +211,7 @@ RSpec.describe "Documentation Accuracy" do
   end
 
   describe "Performance Guide Documentation Accuracy" do
-    let(:performance_doc) { File.read('PERFORMANCE_GUIDE.md') }
+    let(:performance_doc) { File.read('docs/PERFORMANCE_GUIDE.md') }
 
     it "has realistic performance targets" do
       # Check targets are documented and reasonable
@@ -272,7 +272,7 @@ RSpec.describe "Documentation Accuracy" do
   end
 
   describe "Migration Guide Documentation Accuracy" do
-    let(:migration_doc) { File.read('MIGRATION_GUIDE.md') }
+    let(:migration_doc) { File.read('docs/MIGRATION_GUIDE.md') }
 
     it "has accurate version information" do
       # Check version table exists and is properly formatted
@@ -316,9 +316,9 @@ RSpec.describe "Documentation Accuracy" do
 
   describe "Cross-Documentation Consistency" do
     it "has consistent setup information across all docs" do
-      setup_doc = File.read('SETUP_GUIDE.md')
-      usage_doc = File.read('USAGE_EXAMPLES.md')
-      api_doc = File.read('API_DOCUMENTATION.md')
+      setup_doc = File.read('docs/SETUP_GUIDE.md')
+      usage_doc = File.read('docs/USAGE_EXAMPLES.md')
+      api_doc = File.read('docs/API_DOCUMENTATION.md')
 
       # Check database configuration is consistent
       expect(setup_doc).to include('adapter: postgresql')
@@ -336,11 +336,11 @@ RSpec.describe "Documentation Accuracy" do
 
     it "has no broken internal links" do
       all_docs = {
-        'API_DOCUMENTATION.md' => File.read('API_DOCUMENTATION.md'),
-        'USAGE_EXAMPLES.md' => File.read('USAGE_EXAMPLES.md'),
-        'SETUP_GUIDE.md' => File.read('SETUP_GUIDE.md'),
-        'PERFORMANCE_GUIDE.md' => File.read('PERFORMANCE_GUIDE.md'),
-        'MIGRATION_GUIDE.md' => File.read('MIGRATION_GUIDE.md')
+        'API_DOCUMENTATION.md' => File.read('docs/API_DOCUMENTATION.md'),
+        'USAGE_EXAMPLES.md' => File.read('docs/USAGE_EXAMPLES.md'),
+        'SETUP_GUIDE.md' => File.read('docs/SETUP_GUIDE.md'),
+        'PERFORMANCE_GUIDE.md' => File.read('docs/PERFORMANCE_GUIDE.md'),
+        'MIGRATION_GUIDE.md' => File.read('docs/MIGRATION_GUIDE.md')
       }
 
       all_docs.each do |filename, content|
@@ -366,8 +366,8 @@ RSpec.describe "Documentation Accuracy" do
 
     it "has no contradictory statements" do
       docs_content = [
-        File.read('API_DOCUMENTATION.md'),
-        File.read('USAGE_EXAMPLES.md')
+        File.read('docs/API_DOCUMENTATION.md'),
+        File.read('docs/USAGE_EXAMPLES.md')
       ].join
 
       # Check for contradictions in error handling
@@ -395,10 +395,10 @@ RSpec.describe "Documentation Accuracy" do
       ]
 
       all_docs_content = [
-        'API_DOCUMENTATION.md',
-        'USAGE_EXAMPLES.md',
-        'PERFORMANCE_GUIDE.md',
-        'MIGRATION_GUIDE.md'
+        'docs/API_DOCUMENTATION.md',
+        'docs/USAGE_EXAMPLES.md',
+        'docs/PERFORMANCE_GUIDE.md',
+        'docs/MIGRATION_GUIDE.md'
       ].map { |f| File.read(f) }.join
 
       features.each do |feature|
@@ -408,8 +408,8 @@ RSpec.describe "Documentation Accuracy" do
     end
 
     it "includes examples for all public methods" do
-      api_doc = File.read('API_DOCUMENTATION.md')
-      usage_doc = File.read('USAGE_EXAMPLES.md')
+      api_doc = File.read('docs/API_DOCUMENTATION.md')
+      usage_doc = File.read('docs/USAGE_EXAMPLES.md')
 
       # Check that all documented methods have at least one example
       method_patterns = [
