@@ -2,6 +2,7 @@ require 'uri'
 require 'net/http'
 require 'fileutils'
 require 'tempfile'
+require 'digest'
 require_relative '../../smart_rag'
 require_relative '../models'
 require_relative '../chunker/markdown_chunker'
@@ -287,6 +288,9 @@ module SmartRAG
       # @return [::SmartRAG::Models::SourceDocument]
       def create_or_update_document(source, metadata, options = {})
         original_url = options[:url] || metadata[:url] || source
+        normalized_source_uri = options[:source_uri] || original_url
+        source_type = options[:source_type] || infer_source_type(normalized_source_uri, source)
+        content_hash = metadata[:content_hash] || Digest::SHA256.hexdigest((metadata[:content] || '').to_s)
         doc_attributes = {
           url: original_url,
           title: metadata[:title] || File.basename(source),
@@ -295,6 +299,9 @@ module SmartRAG
           publication_date: metadata[:publication_date],
           language: metadata[:language] || detect_language(metadata[:content] || ''),
           download_state: ::SmartRAG::Models::SourceDocument::DOWNLOAD_STATES[:pending],
+          source_type: source_type,
+          source_uri: normalized_source_uri,
+          content_hash: content_hash,
           metadata: metadata.to_json
         }
 
@@ -371,6 +378,13 @@ module SmartRAG
         generate_tags_for_sections(created_sections) if options[:generate_tags] && @tag_service
 
         created_sections
+      end
+
+      def infer_source_type(source_uri, source)
+        return 'url' if source_uri.to_s.start_with?('http://', 'https://')
+        return 'file' if source.to_s.start_with?('/') || source.to_s.include?('.')
+
+        'manual'
       end
 
       # Generate embeddings for sections

@@ -87,6 +87,35 @@ puts results[:results].map { |r| r[:section_title] }
 - `bundle exec rake db:reset`：重建数据库
 - `gem build smart_rag.gemspec`：构建 gem 包
 
+## 运维命令（发布前）
+
+标准发布前步骤（推荐）：
+
+1. 迁移数据库
+
+```bash
+bundle exec rake db:migrate
+```
+
+2. 回填历史数据字段（`source_type/source_uri/content_hash`）
+
+```bash
+bundle exec rake db:backfill_source_fields
+```
+
+3. 执行一键检索发布准备（backfill -> dedupe -> reindex）
+
+```bash
+bundle exec rake db:prepare_release
+```
+
+仅预演（不写入）：
+
+```bash
+DRY_RUN=1 bundle exec rake db:backfill_source_fields
+DRY_RUN=1 bundle exec rake db:prepare_release
+```
+
 ## 目录结构
 
 ```text

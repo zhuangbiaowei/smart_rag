@@ -184,6 +184,38 @@ namespace :db do
     db.disconnect
   end
 
+  desc "Backfill source_type/source_uri/content_hash for existing source_documents"
+  task :backfill_source_fields do
+    require_relative "lib/smart_rag"
+    config = SmartRAG::Config.load
+    client = SmartRAG::SmartRAG.new(config)
+
+    dry_run = ENV["DRY_RUN"] == "1"
+    limit = ENV["LIMIT"]&.to_i
+    result = client.backfill_source_fields(dry_run: dry_run, limit: limit)
+
+    puts "Backfill completed: #{result[:updated_documents]}/#{result[:total_documents]} updated, #{result[:skipped_documents]} skipped"
+    unless result[:errors].empty?
+      puts "Backfill errors: #{result[:errors].length}"
+    end
+  end
+
+  desc "Prepare retrieval release indexes (backfill -> dedupe -> reindex)"
+  task :prepare_release do
+    require_relative "lib/smart_rag"
+    config = SmartRAG::Config.load
+    client = SmartRAG::SmartRAG.new(config)
+
+    dry_run = ENV["DRY_RUN"] == "1"
+    document_id = ENV["DOCUMENT_ID"]
+    result = client.prepare_release_indexes(document_id: document_id, dry_run: dry_run)
+
+    puts "Prepare release success=#{result[:success]}"
+    puts "Backfill: updated=#{result.dig(:backfill, :updated_documents)} skipped=#{result.dig(:backfill, :skipped_documents)}"
+    puts "Dedupe: groups=#{result.dig(:dedupe, :deduped_groups)} deleted=#{result.dig(:dedupe, :deleted_documents)}"
+    puts "Reindex success=#{result.dig(:reindex, :success)}"
+  end
+
   desc "Reset database (drop, create, migrate, seed)"
   task :reset => [:drop, :create, :migrate, :seed]
 end

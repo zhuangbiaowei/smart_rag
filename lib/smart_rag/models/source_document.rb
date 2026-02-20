@@ -19,6 +19,7 @@ module SmartRAG
         completed: 1,
         failed: 2
       }.freeze
+      SOURCE_TYPES = %w[url file manual memory_snapshot other].freeze
 
       # Relationships
       one_to_many :sections, class: '::SmartRAG::Models::SourceSection', key: :document_id
@@ -32,6 +33,7 @@ module SmartRAG
         validates_integer :download_state, allow_nil: true
         validates_includes DOWNLOAD_STATES.values, :download_state, allow_nil: true
         validates_format /\A[a-z]{2}\z/, :language, allow_nil: true, message: 'must be ISO 639-1 code'
+        validates_includes SOURCE_TYPES, :source_type, allow_nil: true
       end
 
       # Class methods
@@ -98,6 +100,14 @@ module SmartRAG
 
         # Create or update document
         def create_or_update(attributes)
+          if attributes[:source_uri] && attributes[:content_hash]
+            existing = where(source_uri: attributes[:source_uri], content_hash: attributes[:content_hash]).first
+            if existing
+              existing.update(attributes)
+              return existing
+            end
+          end
+
           if existing = find_by_url(attributes[:url])
             existing.update(attributes)
             existing
@@ -175,6 +185,9 @@ module SmartRAG
           publication_date: publication_date,
           language: language,
           description: description,
+          source_type: source_type,
+          source_uri: source_uri,
+          content_hash: content_hash,
           download_state: download_state,
           section_count: section_count,
           created_at: created_at,

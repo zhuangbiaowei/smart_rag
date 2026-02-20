@@ -18,6 +18,8 @@
    性能调优与排序策略
 6. `MIGRATION_GUIDE.md`  
    版本迁移与兼容说明
+7. `smartrag_improvement_plan.md` + `retrieval_plan.md` + `evidence_pack.md`  
+   SmartRAG 重构计划与检索契约
 
 ## 文档目录梳理
 
@@ -33,6 +35,9 @@
 | `Hybrid_Reranking.md` | 英文 | 混合检索与重排设计说明 | 搜索相关性工程师 |
 | `SmartChunking.md` | 英文 | 分块策略说明 | 数据导入/切分开发者 |
 | `MIGRATION_GUIDE.md` | 英文 | 版本迁移说明 | 维护者 |
+| `smartrag_improvement_plan.md` | 中文 | 1-2 天改进执行计划 | 维护者/负责人 |
+| `retrieval_plan.md` | 中文 | RetrievalPlan 契约规范 | SmartBrain/检索接入开发者 |
+| `evidence_pack.md` | 中文 | EvidencePack 契约规范 | SmartBrain/检索接入开发者 |
 | `../test/README.md` | 中文 | 测试文档数据集说明 | QA / 开发者 |
 | `../test/TEST_GUIDE.md` | 中文 | 手工测试脚本与场景说明 | QA / 开发者 |
 | `design.md` | 英文 | 系统设计说明 | 架构/维护者 |

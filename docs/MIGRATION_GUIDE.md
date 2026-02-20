@@ -47,3 +47,59 @@ ON search_logs (created_at);
 - Migration steps for Full-Text Search
 - Migration steps for Error Handling
 - Migration steps for Performance Optimization
+
+## Retrieval Refactor Migration (2026-02)
+
+### Scope
+
+- `retrieve(plan) -> EvidencePack` contract rollout
+- `source_documents` new columns: `source_type/source_uri/content_hash`
+- index governance pipeline: backfill, dedupe, reindex
+
+### Recommended Steps
+
+1. Backup database.
+2. Run migrations:
+
+```bash
+bundle exec rake db:migrate
+```
+
+3. Backfill historical documents:
+
+```bash
+bundle exec rake db:backfill_source_fields
+```
+
+Optional dry run:
+
+```bash
+DRY_RUN=1 bundle exec rake db:backfill_source_fields
+```
+
+4. Run release preparation pipeline:
+
+```bash
+bundle exec rake db:prepare_release
+```
+
+Optional dry run:
+
+```bash
+DRY_RUN=1 bundle exec rake db:prepare_release
+```
+
+5. Verify:
+- `source_documents.source_type/source_uri/content_hash` populated
+- `retrieve(plan)` returns `explain.filters_applied`
+- `search_logs.filters` contains `plan/stats/explain`
+
+### Rollback Notes
+
+- Schema rollback:
+
+```bash
+bundle exec rake db:rollback[1]
+```
+
+- If backfill/dedupe/reindex already ran, restore from database backup for full rollback.

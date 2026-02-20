@@ -2,8 +2,11 @@ require_relative "smart_rag/version"
 require_relative "smart_rag/config"
 require_relative "smart_rag/errors"
 require_relative "smart_rag/models"
+require_relative "smart_rag/retrieve"
 require "sequel"
 require "logger"
+require "digest"
+require "json"
 
 module SmartRAG
   class Error < StandardError; end
@@ -254,6 +257,14 @@ module SmartRAG
       else
         raise ArgumentError, "Invalid search_type: #{search_type}. Must be 'hybrid', 'vector', or 'fulltext'"
       end
+    end
+
+    # Structured retrieval interface for SmartBrain integration.
+    # @param plan [Hash] RetrievalPlan object
+    # @return [Hash] EvidencePack
+    def retrieve(plan:)
+      @retrieve_executor ||= ::SmartRAG::Retrieve.new(self)
+      @retrieve_executor.execute(plan: plan)
     end
 
     def vector_search(query, options = {})
@@ -538,6 +549,182 @@ module SmartRAG
       []
     end
 
+    # Rebuild full-text indexes for all sections or a single document.
+    def rebuild_fts(document_id = nil)
+      manager = query_processor&.fulltext_search_service&.fulltext_manager
+      return { success: false, indexed_sections: 0, failed_sections: 0, error: 'Fulltext manager unavailable' } unless manager
+
+      sections = sections_scope(document_id)
+      result = { success: true, indexed_sections: 0, failed_sections: 0, errors: [] }
+
+      sections.each do |section|
+        language = section.document&.language || "en"
+        ok = manager.update_fulltext_index(section.id, section.section_title.to_s, section.content.to_s, language)
+        if ok
+          result[:indexed_sections] += 1
+        else
+          result[:failed_sections] += 1
+          result[:success] = false
+          result[:errors] << { section_id: section.id, error: "FTS update failed" }
+        end
+      end
+
+      result
+    rescue StandardError => e
+      @logger.error "Failed to rebuild FTS index: #{e.message}"
+      { success: false, indexed_sections: 0, failed_sections: 0, error: e.message }
+    end
+
+    # Rebuild embeddings for all sections or a single document.
+    def rebuild_embeddings(document_id = nil)
+      service = query_processor&.embedding_service
+      return { success: false, rebuilt_embeddings: 0, failed_sections: 0, error: 'Embedding service unavailable' } unless service
+
+      sections = sections_scope(document_id)
+      result = { success: true, rebuilt_embeddings: 0, failed_sections: 0, errors: [] }
+
+      sections.each do |section|
+        ::SmartRAG::Models::Embedding.delete_by_section(section.id)
+        service.generate_for_section(section)
+        result[:rebuilt_embeddings] += 1
+      rescue StandardError => e
+        result[:failed_sections] += 1
+        result[:success] = false
+        result[:errors] << { section_id: section.id, error: e.message }
+      end
+
+      result
+    rescue StandardError => e
+      @logger.error "Failed to rebuild embeddings: #{e.message}"
+      { success: false, rebuilt_embeddings: 0, failed_sections: 0, error: e.message }
+    end
+
+    # Rebuild both FTS and embeddings.
+    def reindex(document_id = nil)
+      fts = rebuild_fts(document_id)
+      embeddings = rebuild_embeddings(document_id)
+
+      {
+        success: fts[:success] && embeddings[:success],
+        fts: fts,
+        embeddings: embeddings
+      }
+    end
+
+    # Dedupe documents by source_uri + content_hash.
+    # Keeps the earliest document in each duplicate group.
+    def dedupe_by_content_hash
+      docs = ::SmartRAG::Models::SourceDocument.all
+      by_key = Hash.new { |h, k| h[k] = [] }
+
+      docs.each do |doc|
+        hash = document_content_hash(doc)
+        source_uri = document_source_uri(doc)
+        next if hash.nil? || hash.empty?
+        next if source_uri.nil? || source_uri.empty?
+
+        by_key["#{source_uri}|#{hash}"] << doc
+      end
+
+      deleted = 0
+      groups = 0
+      by_key.each_value do |group|
+        next if group.length <= 1
+
+        groups += 1
+        keeper = group.min_by { |d| d.created_at || Time.at(0) }
+        group.each do |doc|
+          next if doc.id == keeper.id
+
+          remove_document(doc.id)
+          deleted += 1
+        end
+      end
+
+      { success: true, deduped_groups: groups, deleted_documents: deleted }
+    rescue StandardError => e
+      @logger.error "Failed to dedupe by content hash: #{e.message}"
+      { success: false, deduped_groups: 0, deleted_documents: 0, error: e.message }
+    end
+
+    # Backfill source_uri/source_type/content_hash for existing documents.
+    def backfill_source_fields(limit: nil, dry_run: false)
+      docs = ::SmartRAG::Models::SourceDocument.dataset
+      docs = docs.limit(limit.to_i) if limit && limit.to_i > 0
+      docs = docs.all
+
+      updated = 0
+      skipped = 0
+      errors = []
+
+      docs.each do |doc|
+        source_uri = document_source_uri(doc)
+        source_type = infer_source_type_from_uri(source_uri)
+        content_hash = document_content_hash(doc)
+
+        if (doc.respond_to?(:source_uri) && doc.source_uri.to_s == source_uri.to_s) &&
+           (doc.respond_to?(:source_type) && doc.source_type.to_s == source_type.to_s) &&
+           (doc.respond_to?(:content_hash) && doc.content_hash.to_s == content_hash.to_s)
+          skipped += 1
+          next
+        end
+
+        unless dry_run
+          payload = {}
+          payload[:source_uri] = source_uri if doc.respond_to?(:source_uri)
+          payload[:source_type] = source_type if doc.respond_to?(:source_type)
+          payload[:content_hash] = content_hash if doc.respond_to?(:content_hash)
+          doc.update(payload) unless payload.empty?
+        end
+        updated += 1
+      rescue StandardError => e
+        errors << { document_id: doc.respond_to?(:id) ? doc.id : nil, error: e.message }
+      end
+
+      {
+        success: errors.empty?,
+        dry_run: dry_run,
+        total_documents: docs.length,
+        updated_documents: updated,
+        skipped_documents: skipped,
+        errors: errors
+      }
+    rescue StandardError => e
+      @logger.error "Failed to backfill source fields: #{e.message}"
+      {
+        success: false,
+        dry_run: dry_run,
+        total_documents: 0,
+        updated_documents: 0,
+        skipped_documents: 0,
+        errors: [{ error: e.message }]
+      }
+    end
+
+    # One-shot release preparation pipeline.
+    # Steps: backfill source fields -> dedupe -> reindex
+    def prepare_release_indexes(document_id: nil, dry_run: false)
+      backfill = backfill_source_fields(dry_run: dry_run)
+      dedupe = dry_run ? { success: true, dry_run: true, deduped_groups: 0, deleted_documents: 0 } : dedupe_by_content_hash
+      reindex_result = dry_run ? { success: true, dry_run: true } : reindex(document_id)
+
+      {
+        success: backfill[:success] && dedupe[:success] && reindex_result[:success],
+        backfill: backfill,
+        dedupe: dedupe,
+        reindex: reindex_result
+      }
+    rescue StandardError => e
+      @logger.error "Failed to prepare release indexes: #{e.message}"
+      {
+        success: false,
+        backfill: { success: false },
+        dedupe: { success: false },
+        reindex: { success: false },
+        error: e.message
+      }
+    end
+
     # Get system statistics
     def statistics
       {
@@ -631,6 +818,77 @@ module SmartRAG
         @tag_service = ::SmartRAG::Services::TagService.new(@config[:llm] || {})
         @document_processor = nil
       end
+    end
+
+    def sections_scope(document_id)
+      dataset = ::SmartRAG::Models::SourceSection.dataset
+      if !document_id.nil?
+        return [] unless document_id.to_s =~ /\A-?\d+\Z/
+
+        dataset = dataset.where(document_id: document_id.to_i)
+      end
+
+      dataset.eager(:document).all
+    end
+
+    def document_content_hash(document)
+      existing_hash = if document.respond_to?(:content_hash)
+                        document.content_hash
+                      else
+                        nil
+                      end
+      return existing_hash if existing_hash && !existing_hash.to_s.empty?
+
+      metadata = parse_document_metadata(document)
+      metadata_hash = metadata["content_hash"] || metadata[:content_hash]
+      return metadata_hash if metadata_hash && !metadata_hash.to_s.empty?
+
+      content = ::SmartRAG::Models::SourceSection.where(document_id: document.id).order(:id).select_map(:content).join("\n")
+      return nil if content.empty?
+
+      content_hash = Digest::SHA256.hexdigest(content)
+      metadata["content_hash"] = content_hash
+
+      update_payload = { metadata: metadata }
+      update_payload[:content_hash] = content_hash if document.respond_to?(:content_hash)
+      document.update(update_payload)
+      content_hash
+    rescue StandardError => e
+      @logger.warn "Failed to compute content hash for document #{document.id}: #{e.message}"
+      nil
+    end
+
+    def document_source_uri(document)
+      source_uri = if document.respond_to?(:source_uri)
+                     document.source_uri
+                   else
+                     nil
+                   end
+      return source_uri if source_uri && !source_uri.to_s.empty?
+
+      metadata = parse_document_metadata(document)
+      metadata_source = metadata["source_uri"] || metadata[:source_uri]
+      return metadata_source if metadata_source && !metadata_source.to_s.empty?
+
+      document.respond_to?(:url) ? document.url : nil
+    rescue StandardError
+      nil
+    end
+
+    def infer_source_type_from_uri(source_uri)
+      uri = source_uri.to_s
+      return "url" if uri.start_with?("http://", "https://")
+      return "file" if uri.start_with?("file://", "/")
+
+      "manual"
+    end
+
+    def parse_document_metadata(document)
+      metadata = document.metadata
+      if metadata.is_a?(String)
+        metadata = JSON.parse(metadata) rescue {}
+      end
+      metadata.is_a?(Hash) ? metadata : {}
     end
 
     def detect_language(content)
