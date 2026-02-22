@@ -155,8 +155,6 @@ module SmartRAG
         threshold = options[:threshold] || 0.3
         fallback_threshold = options[:fallback_threshold] || 0.1
 
-        puts "[DEBUG] search_by_vector: vector.length=#{vector.length}, threshold=#{threshold}"
-
         results = Models::Embedding.similar_to(vector, limit: limit, threshold: threshold)
 
         if results.empty? && fallback_threshold < threshold
@@ -175,8 +173,6 @@ module SmartRAG
           candidates = Models::Embedding.limit(pool_size).all
           results = candidates.sort_by { |emb| -calculate_similarity(vector, emb) }.first(limit)
         end
-
-        puts "[DEBUG] search_by_vector: returned #{results.size} results"
 
         # Apply filters
         results = apply_filters(results, options)

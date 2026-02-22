@@ -784,7 +784,7 @@ module SmartRAG
     def initialize_services_components
       if ::SmartRAG.db.nil?
         @query_processor = nil
-        @tag_service = ::SmartRAG::Services::TagService.new(@config[:llm] || {})
+        @tag_service = ::SmartRAG::Services::TagService.new((@config[:llm] || {}).merge(logger: @logger))
         @document_processor = nil
         return
       end
@@ -794,18 +794,19 @@ module SmartRAG
         db_connection = ::SmartRAG.db
 
         embedding_manager = ::SmartRAG::Core::Embedding.new(@config[:database])
-        fulltext_manager = ::SmartRAG::Core::FulltextManager.new(db_connection, @config[:fulltext] || {})
+        fulltext_manager = ::SmartRAG::Core::FulltextManager.new(db_connection, (@config[:fulltext] || {}).merge(logger: @logger))
 
         @query_processor = ::SmartRAG::Core::QueryProcessor.new(
           config: @config,
           embedding_manager: embedding_manager,
           fulltext_manager: fulltext_manager,
+          logger: @logger
         )
 
-        @tag_service = ::SmartRAG::Services::TagService.new(@config[:llm])
+        @tag_service = ::SmartRAG::Services::TagService.new((@config[:llm] || {}).merge(logger: @logger))
 
         # Create embedding service for document processor
-        embedding_service = ::SmartRAG::Services::EmbeddingService.new(@config[:embedding] || {})
+        embedding_service = ::SmartRAG::Services::EmbeddingService.new((@config[:embedding] || {}).merge(logger: @logger))
 
         @document_processor = ::SmartRAG::Core::DocumentProcessor.new(
           embedding_manager: embedding_service,
@@ -815,7 +816,7 @@ module SmartRAG
       rescue StandardError => e
         @logger.error "Failed to initialize services: #{e.message}"
         @query_processor = nil
-        @tag_service = ::SmartRAG::Services::TagService.new(@config[:llm] || {})
+        @tag_service = ::SmartRAG::Services::TagService.new((@config[:llm] || {}).merge(logger: @logger))
         @document_processor = nil
       end
     end

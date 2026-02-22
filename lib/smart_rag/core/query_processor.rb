@@ -27,31 +27,34 @@ module SmartRAG
         @config = config
         @logger = config[:logger] || Logger.new(STDOUT)
 
+        # Prepare config with logger for all services
+        config_with_logger = config.merge(logger: @logger)
+
         # Initialize services (use provided or create defaults)
-        @embedding_service = config[:embedding_service] || Services::EmbeddingService.new(config)
-        @tag_service = config[:tag_service] || Services::TagService.new(config)
+        @embedding_service = config[:embedding_service] || Services::EmbeddingService.new(config_with_logger)
+        @tag_service = config[:tag_service] || Services::TagService.new(config_with_logger)
 
         # Create embedding manager for vector search (used for tag-enhanced search)
         @embedding_manager = config[:embedding_manager] || ::SmartRAG::Core::Embedding.new(config)
         @vector_search_service = config[:vector_search_service] || Services::VectorSearchService.new(
-          @embedding_manager, config
+          @embedding_manager, config_with_logger
         )
 
         # Create fulltext manager for fulltext search
         # Note: FulltextManager requires a database connection as first parameter
         db = config[:db] || ::SmartRAG.db
-        fulltext_manager = config[:fulltext_manager] || ::SmartRAG::Core::FulltextManager.new(db, config)
+        fulltext_manager = config[:fulltext_manager] || ::SmartRAG::Core::FulltextManager.new(db, config.merge(logger: @logger))
         query_parser = config[:query_parser] || ::SmartRAG::Parsers::QueryParser.new
         @fulltext_search_service = config[:fulltext_search_service] || Services::FulltextSearchService.new(
-          fulltext_manager, query_parser, config
+          fulltext_manager, query_parser, logger: @logger
         )
 
         @hybrid_search_service = config[:hybrid_search_service] || Services::HybridSearchService.new(
           @embedding_manager,
           fulltext_manager,
-          config
+          config_with_logger
         )
-        @summarization_service = config[:summarization_service] || Services::SummarizationService.new(config)
+        @summarization_service = config[:summarization_service] || Services::SummarizationService.new(config_with_logger)
 
         @logger.info 'QueryProcessor initialized with all services'
       rescue StandardError => e

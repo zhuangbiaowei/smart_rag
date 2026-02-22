@@ -159,10 +159,6 @@ module SmartRAG
           result = smart_prompt_engine.call_worker(:get_embedding, { text: text })
           raise 'No embedding returned from API' unless result
 
-          # Debug: log vector info
-          puts "[DEBUG] generate_embedding: text=#{text[0..50]}, result_type=#{result.class}, result_length=#{result.length}"
-          puts "[DEBUG] generate_embedding: first 5 values=#{result[0..5]}"
-
           result
         end
       rescue StandardError => e
