@@ -27,7 +27,7 @@ embedding:
   # Provider can be: openai, azure_openai, local, or custom
   provider: <%= ENV['EMBEDDING_PROVIDER'] || 'local' %>
   api_key: <%= ENV['EMBEDDING_API_KEY'] || 'ollama-local' %>
-  endpoint: <%= ENV['EMBEDDING_ENDPOINT'] || 'http://localhost:11434/v1/embeddings' %>
+  endpoint: <%= ENV['EMBEDDING_ENDPOINT'] || 'http://192.168.1.48:11434/v1/embeddings' %>
   model: <%= ENV['EMBEDDING_MODEL'] || 'qwen3-embedding' %>
   dimensions: <%= ENV['EMBEDDING_DIMENSIONS'] || 1024 %>
   # Request timeout in seconds
@@ -106,7 +106,7 @@ search:
 llm:
   provider: <%= ENV['LLM_PROVIDER'] || 'openai' %>
   api_key: <%= ENV['LLM_API_KEY'] || 'ollama-local' %>
-  endpoint: <%= ENV['LLM_ENDPOINT'] || 'http://localhost:11434/v1/chat/completions' %>
+  endpoint: <%= ENV['LLM_ENDPOINT'] || 'http://192.168.1.48:11434/v1/chat/completions' %>
   model: <%= ENV['LLM_MODEL'] || 'qwen3' %>
 
   # Generation parameters

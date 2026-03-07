@@ -29,7 +29,7 @@ module Examples
         llm: {
           provider: ENV["SMARTRAG_LLM_PROVIDER"] || ENV["LLM_PROVIDER"] || "openai",
           api_key: ENV["OPENAI_API_KEY"] || ENV["LLM_API_KEY"] || "ollama-local",
-          endpoint: ENV["LLM_ENDPOINT"] || "http://localhost:11434/v1/chat/completions",
+          endpoint: ENV["LLM_ENDPOINT"] || "http://192.168.1.48:11434/v1/chat/completions",
           model: ENV["LLM_MODEL"] || "qwen3",
         },
       }

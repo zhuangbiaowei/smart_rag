@@ -4,12 +4,12 @@ logger_file: ./log/prompt.log
 llms:
   OllamaEmbedding:
     adapter: openai
-    url: http://localhost:11434/v1/
+    url: http://192.168.1.48:11434/v1/
     # Ollama OpenAI-compatible endpoint typically ignores api_key, keep a default placeholder.
     api_key: ollama-local
   SiliconFlow:
     adapter: openai
     url: https://api.siliconflow.cn/v1/
-    api_key: ""
+    api_key: ENV["API_KEY"]
 worker_path: "./workers"
 template_path: "./templates"
