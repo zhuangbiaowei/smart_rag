@@ -962,6 +962,7 @@ module SmartRAG
             error: error_message
           }
         },
+        total_results: 0,
         search_type: :fulltext
       }
     end
@@ -970,6 +971,7 @@ module SmartRAG
       {
         query: query,
         results: [],
+        total_results: 0,
         metadata: {
           total_count: 0,
           execution_time_ms: 0,
