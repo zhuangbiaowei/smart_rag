@@ -235,7 +235,12 @@ module SmartRAG
         ext = File.extname(file_path).downcase
         if ['.md', '.markdown'].include?(ext)
           @logger.info "Detected markdown source; skipping conversion"
-          return File.read(file_path)
+          return read_text_file(file_path)
+        end
+
+        if ['.txt', '.text'].include?(ext)
+          @logger.info "Detected plain text source; skipping markitdown conversion"
+          return read_text_file(file_path)
         end
 
         # Use markitdown bridge for conversion
@@ -256,7 +261,7 @@ module SmartRAG
 
         retries = 0
         begin
-          markdown = bridge.convert(file_path)
+          markdown = normalize_text_content(bridge.convert(file_path))
 
           raise 'Conversion failed: empty result' if markdown.nil? || markdown.strip.empty?
 
@@ -279,6 +284,27 @@ module SmartRAG
       rescue StandardError => e
         @logger.error "Conversion failed: #{e.message}"
         raise e
+      end
+
+      def read_text_file(file_path)
+        normalize_text_content(File.binread(file_path))
+      rescue StandardError => e
+        @logger.error "Failed to read text file #{file_path}: #{e.message}"
+        raise e
+      end
+
+      def normalize_text_content(content)
+        return '' if content.nil?
+
+        normalized = content.is_a?(String) ? content.dup : content.to_s
+
+        begin
+          normalized = normalized.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: '')
+        rescue Encoding::UndefinedConversionError, Encoding::InvalidByteSequenceError
+          normalized = normalized.force_encoding(Encoding::UTF_8).scrub
+        end
+
+        normalized.scrub
       end
 
       # Create or update document record

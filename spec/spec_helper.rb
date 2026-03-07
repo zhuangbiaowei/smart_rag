@@ -1,7 +1,19 @@
+require 'logger'
 require 'sequel'
 require 'database_cleaner-sequel'
 require 'factory_bot'
 require 'pry'
+
+if Gem.win_platform?
+  class Logger
+    alias smart_rag_original_initialize initialize
+
+    def initialize(logdev, *args, **kwargs, &block)
+      normalized_logdev = (logdev == '/dev/null' ? File::NULL : logdev)
+      smart_rag_original_initialize(normalized_logdev, *args, **kwargs, &block)
+    end
+  end
+end
 
 # Load environment variables from .env file
 begin
