@@ -103,3 +103,49 @@ bundle exec rake db:rollback[1]
 ```
 
 - If backfill/dedupe/reindex already ran, restore from database backup for full rollback.
+
+## Media Queue Integrity Migration (015-017, 2026-08)
+
+### Scope
+
+- `015_add_media_leases_and_objects`: heartbeat leases, per-principal idempotency keys, object references, and API quota counters.
+- `016_add_document_principals_and_staging_references`: document ownership and an explicit foreign key from retained jobs to staging media objects.
+- `017_add_media_job_request_fingerprint`: canonical request fingerprints used to distinguish a retry from conflicting reuse of an idempotency key.
+
+### Deployment Order
+
+1. Stop media workers and pause asynchronous ingestion. Existing synchronous retrieval may remain online.
+2. Back up PostgreSQL.
+3. Run migrations through 017 before deploying the current queue code:
+
+```bash
+bundle exec rake db:migrate
+```
+
+4. Verify the schema version and required column:
+
+```sql
+SELECT * FROM schema_info;
+
+SELECT column_name, is_nullable
+FROM information_schema.columns
+WHERE table_schema = 'public'
+  AND table_name = 'media_jobs'
+  AND column_name = 'request_fingerprint';
+```
+
+The expected migration version is `17`, and `request_fingerprint.is_nullable` must be `NO`. Migration 017 backfills existing jobs before adding the `NOT NULL` constraint.
+
+5. Deploy the application and worker together, then resume asynchronous ingestion.
+6. Verify that an identical principal/key/payload returns the original job, while the same principal/key with a different source or options returns HTTP 409 with `code: "idempotency_conflict"`.
+
+### Operational Notes
+
+- The fingerprint includes operation, logical source, and recursively canonicalized serializable options. Hash key order and symbol/string keys are normalized; array order is preserved.
+- Different principals may reuse the same idempotency key.
+- Tools that insert directly into `media_jobs` must now supply `request_fingerprint`; normal application code must use `MediaJobQueue#enqueue`.
+- Retained jobs, including failed jobs, protect `staging_media_object_id` from object garbage collection. Pruning the job releases that protection.
+
+### Rollback Notes
+
+Rollback across migration 017 requires stopping application and worker processes first. Older code does not write `request_fingerprint`, while current code expects it to exist. Rolling back 016 can also remove staging-object protection and document ownership, so restore the matching application version at the same time. Prefer a forward fix after production jobs have been created under the new schema.

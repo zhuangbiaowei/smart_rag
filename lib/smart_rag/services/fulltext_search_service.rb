@@ -319,7 +319,8 @@ module SmartRAG
                                      Sequel[:source_documents][:author],
                                      Sequel[:source_documents][:publication_date],
                                      Sequel[:source_sections][:section_number],
-                                     Sequel[:source_documents][:metadata]
+                                     Sequel[:source_documents][:metadata].as(:document_metadata),
+                                     Sequel[:source_sections][:metadata].as(:section_metadata)
                                    )
 
         result = dataset.first
@@ -333,19 +334,16 @@ module SmartRAG
           section_number: result[:section_number]
         }
 
-        if result[:metadata]
-          if result[:metadata].is_a?(String)
-            begin
-              parsed = JSON.parse(result[:metadata])
-              metadata.merge!(parsed) if parsed.is_a?(Hash)
-            rescue JSON::ParserError
-              # Ignore malformed metadata strings
-            end
-          elsif result[:metadata].is_a?(Hash)
-            metadata.merge!(result[:metadata])
-          end
-        end
+        metadata.merge!(parse_metadata(result[:document_metadata]))
+        metadata.merge!(parse_metadata(result[:section_metadata]))
         metadata
+      end
+
+      def parse_metadata(value)
+        parsed = value.is_a?(String) ? JSON.parse(value) : value
+        parsed.is_a?(Hash) ? parsed : {}
+      rescue JSON::ParserError
+        {}
       end
 
       # Simplify result for quick search

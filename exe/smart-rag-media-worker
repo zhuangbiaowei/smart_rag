@@ -1,0 +1,34 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require 'optparse'
+require 'smart_rag'
+
+options = { batch_size: 10, interval: 2.0, once: false }
+OptionParser.new do |parser|
+  parser.banner = 'Usage: smart-rag-media-worker [options]'
+  parser.on('--once', 'Process one batch and exit') { options[:once] = true }
+  parser.on('--batch-size N', Integer, 'Jobs per batch (default: 10)') { |value| options[:batch_size] = value }
+  parser.on('--interval SECONDS', Float, 'Idle polling interval (default: 2)') { |value| options[:interval] = value }
+end.parse!
+
+config = SmartRAG::Config.load(ENV['SMARTRAG_CONFIG_PATH'])
+rag = SmartRAG::SmartRAG.new(config)
+rag.recover_media_jobs
+last_pruned_at = Time.at(0)
+last_recovered_at = Time.now
+
+loop do
+  jobs = rag.run_media_jobs(limit: options[:batch_size])
+  if Time.now - last_recovered_at >= 60
+    rag.recover_media_jobs
+    last_recovered_at = Time.now
+  end
+  if Time.now - last_pruned_at >= 3600
+    rag.prune_media_jobs
+    rag.garbage_collect_media_objects
+    last_pruned_at = Time.now
+  end
+  break if options[:once]
+  sleep(options[:interval]) if jobs.empty?
+end

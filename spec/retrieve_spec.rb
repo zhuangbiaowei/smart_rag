@@ -275,5 +275,49 @@ RSpec.describe SmartRAG::SmartRAG do
       expect(pack.dig(:explain, :filters_applied, :source_type)).to eq(['url'])
       expect(pack.dig(:explain, :filters_applied, :topic_ids)).to eq([1, 2])
     end
+
+    it 'filters evidence by media_type and preserves media metadata' do
+      allow(smart_rag).to receive(:search).and_return(
+        results: [
+          { section: { id: 20, document_id: 30, content: 'whiteboard roadmap' },
+            metadata: { media_type: 'image', media: { width: 1920, height: 1080 } } },
+          { section: { id: 21, document_id: 31, content: 'meeting transcript' },
+            metadata: { media_type: 'audio', media: { duration_ms: 60_000 } } }
+        ]
+      )
+
+      pack = smart_rag.retrieve(plan: {
+        version: '0.1', request_id: 'req-media',
+        queries: [{ text: 'roadmap', mode: 'hybrid', weight: 1.0 }],
+        global_filters: { media_type: ['image'] }
+      })
+
+      expect(pack[:evidences].length).to eq(1)
+      expect(pack[:evidences].first.dig(:metadata, :media_type)).to eq('image')
+      expect(pack[:evidences].first.dig(:metadata, :media, :width)).to eq(1920)
+      expect(pack.dig(:explain, :filters_applied, :media_type)).to eq(['image'])
+    end
+
+    it 'preserves section-level video timestamps over document metadata' do
+      allow(smart_rag).to receive(:search).and_return(
+        results: [
+          {
+            section: {
+              id: 40, document_id: 50, content: 'Open settings',
+              metadata: { extraction_kind: 'transcript', start_ms: 5000, end_ms: 9000 }
+            },
+            metadata: { media_type: 'video', start_ms: 0 }
+          }
+        ]
+      )
+
+      pack = smart_rag.retrieve(plan: {
+        version: '0.1', request_id: 'req-video-time',
+        queries: [{ text: 'settings', mode: 'hybrid', weight: 1.0 }]
+      })
+
+      metadata = pack[:evidences].first[:metadata]
+      expect(metadata).to include(media_type: 'video', extraction_kind: 'transcript', start_ms: 5000, end_ms: 9000)
+    end
   end
 end

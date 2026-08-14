@@ -130,6 +130,50 @@ document:
   # Download timeout for URLs
   download_timeout: <%= ENV['DOWNLOAD_TIMEOUT'] || 30 %>
 
+# Media ingestion, extraction, storage, and asynchronous jobs
+media:
+  max_file_size_mb: <%= ENV['MEDIA_MAX_FILE_SIZE_MB'] || 50 %>
+  max_duration_ms: <%= ENV['MEDIA_MAX_DURATION_MS'] || 7200000 %>
+  command_timeout_seconds: <%= ENV['MEDIA_COMMAND_TIMEOUT'] || 120 %>
+  allow_private_urls: <%= ENV['MEDIA_ALLOW_PRIVATE_URLS'] == 'true' %>
+  allowed_hosts: <%= ENV.fetch('MEDIA_ALLOWED_HOSTS', '').split(',').map(&:strip).reject(&:empty?) %>
+  content_store:
+    enabled: <%= ENV['MEDIA_CONTENT_STORE_ENABLED'] == 'true' %>
+    provider: <%= ENV['MEDIA_CONTENT_STORE_PROVIDER'] || 'local' %>
+    root: <%= ENV['MEDIA_CONTENT_STORE_ROOT'] || File.expand_path('../storage/media', __dir__) %>
+    bucket: <%= ENV['MEDIA_S3_BUCKET'] %>
+    region: <%= ENV['MEDIA_S3_REGION'] || 'us-east-1' %>
+    prefix: <%= ENV['MEDIA_S3_PREFIX'] || 'smart-rag/media' %>
+    endpoint: <%= ENV['MEDIA_S3_ENDPOINT'] %>
+    force_path_style: <%= ENV['MEDIA_S3_FORCE_PATH_STYLE'] == 'true' %>
+    access_key_id: <%= ENV['MEDIA_S3_ACCESS_KEY_ID'] %>
+    secret_access_key: <%= ENV['MEDIA_S3_SECRET_ACCESS_KEY'] %>
+  openai:
+    base_url: <%= ENV['MEDIA_OPENAI_BASE_URL'] || 'https://api.openai.com' %>
+    api_key: <%= ENV['MEDIA_OPENAI_API_KEY'] || ENV['OPENAI_API_KEY'] %>
+    vision_model: <%= ENV['MEDIA_VISION_MODEL'] %>
+    transcription_model: <%= ENV['MEDIA_TRANSCRIPTION_MODEL'] %>
+    timeout_seconds: <%= ENV['MEDIA_MODEL_TIMEOUT'] || 120 %>
+    language: <%= ENV['MEDIA_TRANSCRIPTION_LANGUAGE'] %>
+  ocr:
+    provider: <%= ENV['MEDIA_OCR_PROVIDER'] %>
+    language: <%= ENV['MEDIA_OCR_LANGUAGE'] %>
+    timeout_seconds: <%= ENV['MEDIA_OCR_TIMEOUT'] || 60 %>
+  async:
+    max_attempts: <%= ENV['MEDIA_JOB_MAX_ATTEMPTS'] || 3 %>
+    stale_after_seconds: <%= ENV['MEDIA_JOB_STALE_AFTER_SECONDS'] || 900 %>
+    retention_seconds: <%= ENV['MEDIA_JOB_RETENTION_SECONDS'] || 604800 %>
+    heartbeat_interval_seconds: <%= ENV['MEDIA_JOB_HEARTBEAT_INTERVAL_SECONDS'] || 30 %>
+
+# Optional HTTP Bearer authentication and shared PostgreSQL quotas.
+http_auth:
+  enabled: <%= ENV['SMARTRAG_HTTP_AUTH_ENABLED'] == 'true' %>
+  principal: <%= ENV['SMARTRAG_HTTP_PRINCIPAL'] || 'default' %>
+  token: <%= ENV['SMARTRAG_HTTP_TOKEN'] %>
+  quota:
+    requests_per_minute: <%= ENV['SMARTRAG_REQUESTS_PER_MINUTE'] || 0 %>
+    upload_bytes_per_day: <%= ENV['SMARTRAG_UPLOAD_BYTES_PER_DAY'] || 0 %>
+
 # Logging Configuration
 logging:
   # Log level: debug, info, warn, error, fatal

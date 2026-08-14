@@ -48,7 +48,10 @@ RSpec.describe SmartRAG::SmartRAG do
 
   describe '#add_document' do
     let(:document_processor) { instance_double('SmartRAG::Core::DocumentProcessor') }
-    let(:mock_document) { instance_double('SmartRAG::Models::SourceDocument', id: 1) }
+    let(:mock_document) do
+      instance_double('SmartRAG::Models::SourceDocument', id: 1,
+                                                          metadata: { media_type: 'document' }.to_json)
+    end
     let(:mock_sections) { [instance_double('SmartRAG::Models::SourceSection')] }
     let(:temp_file) { Tempfile.new(['test', '.pdf']) }
 
@@ -72,6 +75,7 @@ RSpec.describe SmartRAG::SmartRAG do
       expect(result[:document_id]).to eq(1)
       expect(result[:section_count]).to eq(1)
       expect(result[:status]).to eq('success')
+      expect(result[:media_type]).to eq('document')
     end
 
     it 'accepts processing options' do
@@ -79,7 +83,9 @@ RSpec.describe SmartRAG::SmartRAG do
       smart_rag.add_document(temp_file.path, options)
 
       expect(document_processor).to have_received(:create_document)
-        .with(temp_file.path, options)
+        .with(temp_file.path, hash_including(options).and(
+          hash_including(metadata: hash_including(media_type: 'document', schema_version: 1))
+        ))
     end
   end
 

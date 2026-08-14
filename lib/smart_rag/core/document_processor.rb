@@ -3,6 +3,8 @@ require 'net/http'
 require 'fileutils'
 require 'tempfile'
 require 'digest'
+require 'timeout'
+require_relative 'media_safety_policy'
 require_relative '../../smart_rag'
 require_relative '../models'
 require_relative '../chunker/markdown_chunker'
@@ -149,7 +151,15 @@ module SmartRAG
       # @param [String] url Source URL
       # @param [Hash] options Download options
       # @return [String] Path to downloaded file
-      def download_from_url(url, options = {})
+      def download_from_url(url, options = {}, redirect_count = 0)
+        max_redirects = options.fetch(:max_redirects, 5).to_i
+        raise ArgumentError, "too many redirects (max #{max_redirects})" if redirect_count > max_redirects
+
+        MediaSafetyPolicy.new(
+          max_bytes: options[:max_file_size] || 50 * 1024 * 1024,
+          allow_private_urls: options.fetch(:allow_private_urls, false),
+          allowed_hosts: options[:allowed_hosts]
+        ).validate_url!(url)
         uri = URI.parse(url)
         @logger.info "Downloading from URL: #{url}"
 
@@ -161,32 +171,57 @@ module SmartRAG
         temp_file.close
 
         # Download the file
-        Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https') do |http|
+        timeout = options.fetch(:download_timeout, 30).to_i
+        max_bytes = options.fetch(:max_file_size, 50 * 1024 * 1024).to_i
+        redirect_url = nil
+        Net::HTTP.start(uri.hostname, uri.port, use_ssl: uri.scheme == 'https',
+                        open_timeout: timeout, read_timeout: timeout) do |http|
           request = Net::HTTP::Get.new(uri)
           # Set user agent to avoid being blocked
           request['User-Agent'] = 'SmartRAG Document Processor/1.0'
 
-          response = http.request(request)
+          http.request(request) do |response|
+            case response.code
+            when '200'
+              content_length = response['Content-Length'].to_i
+              raise ArgumentError, "download exceeds #{max_bytes} bytes" if content_length > max_bytes
 
-          case response.code
-          when '200'
-            File.write(temp_path, response.body)
-          when '301', '302', '303', '307', '308'
-            # Follow redirect
-            redirect_url = response['Location']
-            @logger.info "Redirecting to: #{redirect_url}"
-            return download_from_url(redirect_url, options)
-          else
-            raise "HTTP Error: #{response.code} - #{response.message}"
+              written = 0
+              File.open(temp_path, 'wb') do |file|
+                response.read_body do |chunk|
+                  written += chunk.bytesize
+                  raise ArgumentError, "download exceeds #{max_bytes} bytes" if written > max_bytes
+                  file.write(chunk)
+                end
+              end
+            when '301', '302', '303', '307', '308'
+              redirect_url = URI.join(url, response['Location']).to_s
+              @logger.info "Redirecting to: #{redirect_url}"
+            else
+              raise "HTTP Error: #{response.code} - #{response.message}"
+            end
           end
+        end
+
+        if redirect_url
+          File.delete(temp_path) if File.exist?(temp_path)
+          return download_from_url(redirect_url, options, redirect_count + 1)
         end
 
         @downloaded_file = temp_path
         @logger.info "Downloaded file to: #{temp_path}"
         temp_path
       rescue StandardError => e
+        File.delete(temp_path) if defined?(temp_path) && temp_path && File.exist?(temp_path)
         @logger.error "Download failed: #{e.message}"
         raise e
+      end
+
+      def cleanup_downloaded_file
+        return unless @downloaded_file && File.exist?(@downloaded_file)
+
+        File.delete(@downloaded_file)
+        @downloaded_file = nil
       end
 
       # Extract metadata from file
@@ -328,6 +363,7 @@ module SmartRAG
           source_type: source_type,
           source_uri: normalized_source_uri,
           content_hash: content_hash,
+          principal: options[:principal] || metadata[:principal] || 'system',
           metadata: metadata.to_json
         }
 
@@ -381,11 +417,13 @@ module SmartRAG
       # @option options [Boolean] :generate_tags Whether to generate tags for sections
       def save_sections(document, chunks, options = {})
         sections = chunks.each_with_index.map do |chunk, index|
+          chunk_metadata = chunk[:metadata] || {}
           {
             document_id: document.id,
             section_title: chunk[:title],
             section_number: index + 1,
             content: chunk[:content],
+            metadata: chunk_metadata.to_json,
             created_at: Time.now,
             updated_at: Time.now
           }

@@ -7,6 +7,7 @@ require "sequel"
 require "logger"
 require "digest"
 require "json"
+require "uri"
 
 module SmartRAG
   class Error < StandardError; end
@@ -64,16 +65,105 @@ module SmartRAG
 
     # Add document to knowledge base
     def add_document(document_path, options = {})
-      result = @document_processor.create_document(document_path, options)
+      document_metadata = symbolize_hash(options[:metadata] || {}).merge(media_type: 'document', schema_version: 1)
+      result = @document_processor.create_document(document_path, options.merge(metadata: document_metadata))
       {
         document_id: result[:document].id,
+        media_type: 'document',
         section_count: result[:sections].length,
         status: "success",
+        metadata: normalize_document_metadata(result[:document].metadata),
+        warnings: []
       }
     end
 
+    def add_media(source, options = {})
+      require_relative 'smart_rag/core/media_processor'
+      require_relative 'smart_rag/core/media_metadata_extractor'
+      requested_type = options[:media_type]
+      requested_type = nil if requested_type.to_s == 'auto'
+      detection_source = source.to_s.match?(%r{\Ahttps?://}) ? URI.parse(source.to_s).path : source
+      detected_type = requested_type || ::SmartRAG::Core::MediaMetadataExtractor.new.detect_media_type(detection_source)
+      return add_document(source, options) if detected_type.to_s == 'document'
+
+      @media_processor ||= build_media_processor
+      @media_processor.create(source, options)
+    end
+
+    def add_image(source, options = {})
+      add_media(source, options.merge(media_type: 'image'))
+    end
+
+    def add_audio(source, options = {})
+      add_media(source, options.merge(media_type: 'audio'))
+    end
+
+    def add_video(source, options = {})
+      add_media(source, options.merge(media_type: 'video'))
+    end
+
+    def enqueue_media(source, options = {})
+      job_options = options.dup
+      operation = job_options.delete(:operation) || :add_media
+      max_attempts = job_options.delete(:max_attempts) || @config.dig(:media, :async, :max_attempts) || 3
+      idempotency_key = job_options.delete(:idempotency_key)
+      principal = job_options.delete(:principal) || 'system'
+      staging_media_object_id = job_options.delete(:staging_media_object_id)
+      queued = media_job_queue.enqueue(operation: operation, source: source, options: job_options,
+                                       max_attempts: max_attempts, idempotency_key: idempotency_key,
+                                       principal: principal, staging_media_object_id: staging_media_object_id)
+      { job_id: queued[:id], status: queued[:status], media_type: job_options[:media_type],
+        deduplicated: queued[:deduplicated] == true, warnings: [] }
+    end
+
+    def stage_media_upload(source)
+      store = media_content_store
+      return nil unless store
+      stored = store.put(source)
+      object_id = media_object_registry.register(stored, byte_size: File.size(source))
+      stored.merge(media_object_id: object_id)
+    end
+
+    def media_job(job_id, principal: nil)
+      media_job_queue.job(job_id, principal: principal)
+    end
+
+    def media_jobs(status: nil, limit: 20, offset: 0, principal: nil)
+      media_job_queue.list(status: status, limit: limit, offset: offset, principal: principal)
+    end
+
+    def cancel_media_job(job_id, principal: nil)
+      media_job_queue.cancel(job_id, principal: principal)
+    end
+
+    def retry_media_job(job_id, principal: nil)
+      media_job_queue.retry_job(job_id, principal: principal)
+    end
+
+    def media_job_statistics(principal: nil)
+      media_job_queue.statistics(stale_after_seconds: media_async_config.fetch(:stale_after_seconds, 900),
+                                 principal: principal)
+    end
+
+    def recover_media_jobs
+      media_job_queue.recover_stale(timeout_seconds: media_async_config.fetch(:stale_after_seconds, 900))
+    end
+
+    def prune_media_jobs
+      media_job_queue.prune(retention_seconds: media_async_config.fetch(:retention_seconds, 604_800))
+    end
+
+    def garbage_collect_media_objects(limit: 100)
+      return { removed_count: 0, object_ids: [], disabled: true } unless media_object_registry
+      media_object_registry.garbage_collect(limit: limit)
+    end
+
+    def run_media_jobs(limit: 1)
+      media_job_queue.run(limit: limit)
+    end
+
     # Remove document from knowledge base
-    def remove_document(document_id)
+    def remove_document(document_id, principal: nil)
       return { success: false, deleted_sections: 0, deleted_embeddings: 0 } unless document_id.to_s =~ /\A-?\d+\Z/
 
       doc_id_i = document_id.to_i
@@ -81,20 +171,25 @@ module SmartRAG
       result = nil
 
       @delete_mutex.synchronize do
-        doc = ::SmartRAG::Models::SourceDocument[doc_id_i]
-        if doc.nil?
-          result = { success: false, deleted_sections: 0, deleted_embeddings: 0 }
-        else
-          section_ids = ::SmartRAG::Models::SourceSection.where(document_id: doc_id_i).select_map(:id)
-          deleted_embeddings = section_ids.any? ? ::SmartRAG::Models::Embedding.where(source_id: section_ids).delete : 0
-          deleted_sections = ::SmartRAG::Models::SourceSection.where(document_id: doc_id_i).delete
-          deleted = ::SmartRAG::Models::SourceDocument.where(id: doc_id_i).delete
+        ::SmartRAG.db.transaction do
+          document_scope = ::SmartRAG::Models::SourceDocument.where(id: doc_id_i)
+          document_scope = document_scope.where(principal: principal.to_s) if principal
+          doc = document_scope.first
+          if doc.nil?
+            result = { success: false, deleted_sections: 0, deleted_embeddings: 0 }
+          else
+            media_object_registry&.detach_document(doc_id_i)
+            section_ids = ::SmartRAG::Models::SourceSection.where(document_id: doc_id_i).select_map(:id)
+            deleted_embeddings = section_ids.any? ? ::SmartRAG::Models::Embedding.where(source_id: section_ids).delete : 0
+            deleted_sections = ::SmartRAG::Models::SourceSection.where(document_id: doc_id_i).delete
+            deleted = ::SmartRAG::Models::SourceDocument.where(id: doc_id_i).delete
 
-          result = {
-            success: deleted > 0,
-            deleted_sections: deleted_sections,
-            deleted_embeddings: deleted_embeddings,
-          }
+            result = {
+              success: deleted > 0,
+              deleted_sections: deleted_sections,
+              deleted_embeddings: deleted_embeddings,
+            }
+          end
         end
       end
 
@@ -105,10 +200,12 @@ module SmartRAG
     end
 
     # Get document information
-    def get_document(document_id)
+    def get_document(document_id, principal: nil)
       return nil unless document_id.to_s =~ /\A-?\d+\Z/
 
-      document = ::SmartRAG::Models::SourceDocument[document_id.to_i]
+      dataset = ::SmartRAG::Models::SourceDocument.where(id: document_id.to_i)
+      dataset = dataset.where(principal: principal.to_s) if principal
+      document = dataset.first
       return nil unless document
 
       {
@@ -148,6 +245,7 @@ module SmartRAG
       per_page = [[per_page, 1].max, 100].min
 
       dataset = ::SmartRAG::Models::SourceDocument.dataset
+      dataset = dataset.where(principal: options[:principal].to_s) if options[:principal]
 
       if options[:search] && !options[:search].empty?
         search_term = "%#{options[:search]}%"
@@ -246,17 +344,21 @@ module SmartRAG
       end
 
       search_type = (options[:search_type] || "hybrid").to_s
+      options = scope_search_options(options)
+      return empty_search_response(normalized_query, search_type) if options.delete(:principal_scope_empty)
 
-      case search_type
-      when "hybrid"
-        hybrid_search(normalized_query, options.merge(search_type: :hybrid))
-      when "vector"
-        vector_search(normalized_query, options.merge(search_type: :vector))
-      when "fulltext"
-        fulltext_search(normalized_query, options.merge(search_type: :fulltext))
-      else
-        raise ArgumentError, "Invalid search_type: #{search_type}. Must be 'hybrid', 'vector', or 'fulltext'"
-      end
+      response = case search_type
+                 when "hybrid"
+                   hybrid_search(normalized_query, options.merge(search_type: :hybrid))
+                 when "vector"
+                   vector_search(normalized_query, options.merge(search_type: :vector))
+                 when "fulltext"
+                   fulltext_search(normalized_query, options.merge(search_type: :fulltext))
+                 else
+                   raise ArgumentError, "Invalid search_type: #{search_type}. Must be 'hybrid', 'vector', or 'fulltext'"
+                 end
+      filter_search_response(response, options[:document_ids]) if options[:principal]
+      response
     end
 
     # Structured retrieval interface for SmartBrain integration.
@@ -726,7 +828,8 @@ module SmartRAG
     end
 
     # Get system statistics
-    def statistics
+    def statistics(principal: nil)
+      return scoped_statistics(principal) if principal
       {
         document_count: ::SmartRAG::Models::SourceDocument.count,
         section_count: ::SmartRAG::Models::SourceSection.count,
@@ -747,6 +850,135 @@ module SmartRAG
     end
 
     private
+
+    def scope_search_options(options)
+      return options unless options[:principal]
+      allowed_ids = ::SmartRAG::Models::SourceDocument.where(principal: options[:principal].to_s).select_map(:id)
+      requested_ids = Array(options[:document_ids]).map(&:to_i)
+      allowed_ids &= requested_ids unless requested_ids.empty?
+      options.merge(document_ids: allowed_ids, principal_scope_empty: allowed_ids.empty?)
+    end
+
+    def empty_search_response(query, search_type)
+      { query: query, search_type: search_type.to_sym, results: [], total_results: 0,
+        metadata: { total_count: 0 } }
+    end
+
+    def filter_search_response(response, allowed_document_ids)
+      return response unless response.is_a?(Hash)
+      allowed = Array(allowed_document_ids).map(&:to_i)
+      key = response.key?(:results) ? :results : 'results'
+      results = Array(response[key]).select do |result|
+        section = result.is_a?(Hash) ? (result[:section] || result['section'] || result) : result
+        document_id = if result.is_a?(Hash)
+                        result[:document_id] || result['document_id']
+                      end
+        document_id ||= if section.is_a?(Hash)
+                          section[:document_id] || section['document_id']
+                        elsif section.respond_to?(:document_id)
+                          section.document_id
+                        end
+        document_id && allowed.include?(document_id.to_i)
+      end
+      response[key] = results
+      response[:total_results] = results.length if response.key?(:total_results)
+      response['total_results'] = results.length if response.key?('total_results')
+      if response[:metadata].is_a?(Hash)
+        response[:metadata][:total_count] = results.length
+      elsif response['metadata'].is_a?(Hash)
+        response['metadata']['total_count'] = results.length
+      end
+      response
+    end
+
+    def scoped_statistics(principal)
+      document_ids = ::SmartRAG::Models::SourceDocument.where(principal: principal.to_s).select_map(:id)
+      section_ids = ::SmartRAG::Models::SourceSection.where(document_id: document_ids).select_map(:id)
+      {
+        document_count: document_ids.length,
+        section_count: section_ids.length,
+        topic_count: ::SmartRAG.db[:research_topic_sections].where(section_id: section_ids).distinct.count(:research_topic_id),
+        tag_count: ::SmartRAG.db[:section_tags].where(section_id: section_ids).distinct.count(:tag_id),
+        embedding_count: ::SmartRAG::Models::Embedding.where(source_id: section_ids).count
+      }
+    end
+
+    def normalize_document_metadata(value)
+      parsed = value.is_a?(String) ? JSON.parse(value) : value
+      parsed.is_a?(Hash) ? parsed : {}
+    rescue JSON::ParserError
+      {}
+    end
+
+    def symbolize_hash(value)
+      return {} unless value.is_a?(Hash)
+
+      value.each_with_object({}) { |(key, item), result| result[key.to_sym] = item }
+    end
+
+    def media_job_queue
+      require_relative 'smart_rag/core/media_job_queue'
+      @media_job_queue ||= ::SmartRAG::Core::MediaJobQueue.new(
+        db: ::SmartRAG.db,
+        heartbeat_interval_seconds: media_async_config.fetch(:heartbeat_interval_seconds, 30),
+        handler: lambda do |operation, source, options|
+          raise ArgumentError, "unsupported media job operation: #{operation}" unless %i[add_document add_media add_image add_audio add_video].include?(operation)
+          options.delete(:delete_source_after)
+          public_send(operation, source, options)
+        end
+      )
+    end
+
+    def media_async_config
+      @config.dig(:media, :async) || {}
+    end
+
+    def build_media_processor
+      require_relative 'smart_rag/core/media_processor'
+      require_relative 'smart_rag/core/media_extractors'
+      require_relative 'smart_rag/core/media_safety_policy'
+      require_relative 'smart_rag/core/local_content_store'
+      require_relative 'smart_rag/core/s3_content_store'
+      require_relative 'smart_rag/core/media_object_registry'
+
+      media_config = @config[:media] || {}
+      store_config = media_config[:content_store] || {}
+      store = media_content_store
+      ::SmartRAG::Core::MediaProcessor.new(
+        document_processor: @document_processor,
+        safety_policy: ::SmartRAG::Core::MediaSafetyPolicy.new(media_config),
+        content_store: store,
+        object_registry: media_object_registry,
+        default_extractors: ::SmartRAG::Core::MediaExtractors::Factory.build(media_config),
+        logger: @logger
+      )
+    end
+
+    def media_content_store
+      return @media_content_store if defined?(@media_content_store)
+      require_relative 'smart_rag/core/local_content_store'
+      require_relative 'smart_rag/core/s3_content_store'
+      store_config = @config.dig(:media, :content_store) || {}
+      return @media_content_store = nil unless store_config.fetch(:enabled, false)
+
+      provider = store_config.fetch(:provider, 'local').to_s
+      @media_content_store = case provider
+                             when 'local'
+                               ::SmartRAG::Core::LocalContentStore.new(root: store_config.fetch(:root))
+                             when 's3'
+                               ::SmartRAG::Core::S3ContentStore.new(**store_config.reject { |key, _| %i[enabled provider root].include?(key) })
+                             else
+                               raise ArgumentError, "unsupported media content store provider: #{provider}"
+                             end
+    end
+
+    def media_object_registry
+      return @media_object_registry if defined?(@media_object_registry)
+      store = media_content_store
+      return @media_object_registry = nil unless store
+      require_relative 'smart_rag/core/media_object_registry'
+      @media_object_registry = ::SmartRAG::Core::MediaObjectRegistry.new(db: ::SmartRAG.db, content_store: store)
+    end
 
     def initialize_db_connection
       db_config = @config[:database]

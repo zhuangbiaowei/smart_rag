@@ -16,7 +16,7 @@ class TestDocumentImporter
       },
       llm: {
         provider: "openai",
-        api_key: "sk-qbmqiwoyvswtyzrdjrojkaplerhwcwoloulqlxgcjfjxpmpw",
+        api_key: ENV['OPENAI_API_KEY'],
       },
     }
 

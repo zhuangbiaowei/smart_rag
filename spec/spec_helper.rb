@@ -72,6 +72,8 @@ end
 DatabaseCleaner[:sequel, db: db].strategy = :transaction
 
 RSpec.configure do |config|
+  config.filter_run_excluding live: true unless ENV['SMARTRAG_LIVE_SPECS'] == '1'
+
   # Basic configuration
   config.expect_with :rspec do |expectations|
     expectations.include_chain_clauses_in_custom_matcher_descriptions = true

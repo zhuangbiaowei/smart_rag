@@ -2,7 +2,7 @@ require 'spec_helper'
 require 'smart_rag'
 require 'tempfile'
 
-RSpec.describe "Documentation Examples" do
+RSpec.describe "Documentation Examples", :live do
   let(:config) do
     {
       database: {

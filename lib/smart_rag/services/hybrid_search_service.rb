@@ -702,6 +702,12 @@ module SmartRAG
                                 document_id: document_id
                               }
                             end
+            section_metadata = if section.is_a?(Hash)
+                                 section[:metadata] || section['metadata']
+                               elsif section.respond_to?(:metadata)
+                                 section.metadata
+                               end
+            base_metadata.merge!(parse_metadata(section_metadata))
 
             if document_id && document_id != ''
               begin
@@ -715,18 +721,9 @@ module SmartRAG
                   # Merge document metadata (may contain category, author, etc.)
                   if doc[:metadata]
                     @logger.debug "Document metadata found: #{doc[:metadata].inspect}"
-                    parsed_metadata = if doc[:metadata].is_a?(String)
-                                        begin
-                                          JSON.parse(doc[:metadata])
-                                        rescue StandardError
-                                          {}
-                                        end
-                                      else
-                                        doc[:metadata]
-                                      end
-                    parsed_metadata = symbolize_keys(parsed_metadata) if parsed_metadata.is_a?(Hash)
+                    parsed_metadata = parse_metadata(doc[:metadata])
                     @logger.debug "Parsed metadata: #{parsed_metadata.inspect}"
-                    base_metadata.merge!(parsed_metadata) if parsed_metadata.is_a?(Hash)
+                    base_metadata = parsed_metadata.merge(base_metadata)
                   else
                     @logger.debug 'Document has no metadata field or is nil'
                   end
@@ -751,6 +748,13 @@ module SmartRAG
 
           enriched
         end
+      end
+
+      def parse_metadata(value)
+        parsed = value.is_a?(String) ? JSON.parse(value) : value
+        parsed.is_a?(Hash) ? symbolize_keys(parsed) : {}
+      rescue JSON::ParserError
+        {}
       end
 
       def calculate_score_stats(results)

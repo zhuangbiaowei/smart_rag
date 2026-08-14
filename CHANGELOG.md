@@ -1,8 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.2.0 - 2026-08-14
 
 ### Added
+- 新增图片、音频、视频和通用媒体导入 API，以及可降级为 `partial` 的媒体元数据与语义提取。
+- 新增 Rack HTTP 服务、Bearer 认证、principal 隔离和 PostgreSQL 配额控制。
+- 新增 PostgreSQL 持久化媒体任务队列、取消/重试、heartbeat lease、卡死任务恢复和保留期清理。
+- 新增本地与 S3/MinIO 内容寻址存储、对象引用计数和垃圾回收。
+- 新增按 principal 隔离的幂等键与规范化请求指纹；冲突请求返回 `idempotency_conflict`。
+- 新增数据库迁移 012-017，覆盖 section metadata、媒体任务、租约、对象引用、文档所有权和请求指纹。
+- 新增 `smart-rag-media-worker` 可执行文件和 Rack `config.ru` 启动入口。
 - 新增 `retrieve(plan:)` 结构化检索入口（`RetrievalPlan -> EvidencePack`）。
 - 新增 `SmartRAG::Retrieve` 执行器：支持多 query、mode 映射、signals、provenance、stats、explain。
 - 新增索引治理接口：
@@ -22,6 +29,9 @@
   - `prepare_release_indexes(document_id: nil, dry_run: false)`
 
 ### Changed
+- 文档、检索、统计和媒体任务 API 支持 principal 所有权过滤。
+- 文档与 section metadata 在全文、混合和结构化检索结果中统一合并。
+- URL 下载新增私网地址限制、主机白名单、重定向上限、超时和流式大小限制。
 - `retrieve` 现支持 `global_filters.source_type` 与 `global_filters.source_uri_prefix` 的执行过滤。
 - `retrieve` 新增 `global_filters.topic_ids` 的执行过滤（按 section-topic 关系过滤）。
 - `retrieve` 新增 `budget.diversity.by_source` 执行约束。

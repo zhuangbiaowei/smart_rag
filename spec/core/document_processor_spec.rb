@@ -25,10 +25,11 @@ RSpec.describe SmartRAG::Core::DocumentProcessor do
       # Mock Net::HTTP
       response = double('response')
       allow(response).to receive(:code).and_return('200')
-      allow(response).to receive(:body).and_return('<html><body>Test content</body></html>')
+      allow(response).to receive(:[]).with('Content-Length').and_return(nil)
+      allow(response).to receive(:read_body).and_yield('<html><body>Test content</body></html>')
 
       http = double('http')
-      allow(http).to receive(:request).and_return(response)
+      allow(http).to receive(:request) { |_request, &block| block.call(response) }
 
       allow(Net::HTTP).to receive(:start).and_yield(http)
     end
@@ -56,10 +57,12 @@ RSpec.describe SmartRAG::Core::DocumentProcessor do
 
       success_response = double('success_response')
       allow(success_response).to receive(:code).and_return('200')
-      allow(success_response).to receive(:body).and_return('<html><body>Redirected content</body></html>')
+      allow(success_response).to receive(:[]).with('Content-Length').and_return(nil)
+      allow(success_response).to receive(:read_body).and_yield('<html><body>Redirected content</body></html>')
 
       http = double('http')
-      allow(http).to receive(:request).and_return(redirect_response, success_response)
+      responses = [redirect_response, success_response]
+      allow(http).to receive(:request) { |_request, &block| block.call(responses.shift) }
 
       allow(Net::HTTP).to receive(:start).and_yield(http)
 
@@ -76,7 +79,7 @@ RSpec.describe SmartRAG::Core::DocumentProcessor do
       allow(response).to receive(:message).and_return('Not Found')
 
       http = double('http')
-      allow(http).to receive(:request).and_return(response)
+      allow(http).to receive(:request) { |_request, &block| block.call(response) }
 
       allow(Net::HTTP).to receive(:start).and_yield(http)
 

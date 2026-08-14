@@ -20,7 +20,9 @@ Gem::Specification.new do |spec|
 
   # Specify which files should be added to the gem when it is released.
   spec.files = Dir.chdir(__dir__) do
-    `git ls-files -z`.split("\x0").reject do |f|
+    tracked = `git ls-files -z`.split("\x0")
+    runtime = Dir.glob('{lib,db,config,exe}/**/*', File::FNM_DOTMATCH).select { |path| File.file?(path) }
+    (tracked + runtime).uniq.reject do |f|
       (f == __FILE__) || f.match(%r{\A(?:(?:bin|test|spec|features)/|\.(?:git|travis|circleci)|appveyor)})
     end
   end
@@ -34,7 +36,10 @@ Gem::Specification.new do |spec|
   spec.add_dependency "yaml", "~> 0.2"
   spec.add_dependency "httparty", "~> 0.20"
   spec.add_dependency "nokogiri", "~> 1.0"
+  spec.add_dependency "rack", ">= 2.2", "< 4"
+  spec.add_dependency "puma", ">= 6.0", "< 8"
   spec.add_dependency "markitdown", "~> 0.1"
+  spec.add_dependency "aws-sdk-s3", "~> 1.0"
 
   # Development dependencies
   spec.add_development_dependency "bundler", "~> 4.0"

@@ -17,8 +17,12 @@ module SmartRAG
     end
 
     def execute(plan:)
+      @document_metadata_cache = {}
+      @section_topic_cache = {}
       normalized_plan = normalize_plan(plan)
       validate_plan!(normalized_plan)
+      principal = normalized_plan.delete(:_principal)
+      normalized_plan = scope_plan_to_principal(normalized_plan, principal) if principal
 
       started_at = monotonic_now
       generated_at = Time.now.utc.iso8601
@@ -57,7 +61,7 @@ module SmartRAG
 
       pack = {
         version: normalized_plan[:version] || '0.1',
-        plan: normalized_plan,
+        plan: public_plan(normalized_plan),
         plan_id: plan_id,
         request_id: request_id,
         generated_at: generated_at,
@@ -345,6 +349,9 @@ module SmartRAG
       if filters[:source_type]
         applied[:source_type] = Array(filters[:source_type]).map(&:to_s)
       end
+      if filters[:media_type]
+        applied[:media_type] = Array(filters[:media_type]).map(&:to_s)
+      end
       if filters[:source_uri_prefix]
         applied[:source_uri_prefix] = Array(filters[:source_uri_prefix]).map(&:to_s)
       end
@@ -479,6 +486,12 @@ module SmartRAG
         return false unless allowed.include?(actual)
       end
 
+      if filters[:media_type]
+        allowed = Array(filters[:media_type]).map { |value| value.to_s.downcase }
+        actual = candidate.dig(:metadata, :media_type) || candidate.dig(:metadata, 'media_type')
+        return false unless allowed.include?(actual.to_s.downcase)
+      end
+
       if filters[:source_uri_prefix]
         prefixes = Array(filters[:source_uri_prefix]).map(&:to_s)
         uri = candidate[:source_uri].to_s
@@ -489,6 +502,11 @@ module SmartRAG
         required_topic_ids = Array(filters[:topic_ids]).map(&:to_i).uniq
         section_topics = section_topic_ids_for(candidate[:section_id])
         return false if required_topic_ids.any? && (required_topic_ids & section_topics).empty?
+      end
+
+      if filters[:principal]
+        actual = document_principal_for(candidate[:document_id])
+        return false unless actual == filters[:principal].to_s
       end
 
       true
@@ -520,7 +538,44 @@ module SmartRAG
 
       metadata[:section_id] ||= section_id if section_id
       metadata[:document_id] ||= document_id if document_id
+      section_metadata = extract_section_metadata(section)
+      metadata = document_metadata_for(document_id).merge(metadata).merge(section_metadata)
       metadata
+    end
+
+    def extract_section_metadata(section)
+      raw = if section.is_a?(Hash)
+              section[:metadata] || section['metadata']
+            elsif section.respond_to?(:metadata)
+              section.metadata
+            end
+      parsed = raw.is_a?(String) ? JSON.parse(raw) : raw
+      parsed.is_a?(Hash) ? symbolize_keys(parsed) : {}
+    rescue JSON::ParserError
+      {}
+    end
+
+    def document_metadata_for(document_id)
+      return {} if document_id.nil?
+      return {} unless defined?(::SmartRAG) && ::SmartRAG.respond_to?(:db) && ::SmartRAG.db
+
+      @document_metadata_cache ||= {}
+      return @document_metadata_cache[document_id] if @document_metadata_cache.key?(document_id)
+
+      raw = ::SmartRAG.db[:source_documents].where(id: document_id).get(:metadata)
+      parsed = raw.is_a?(String) ? JSON.parse(raw) : raw
+      @document_metadata_cache[document_id] = parsed.is_a?(Hash) ? symbolize_keys(parsed) : {}
+    rescue StandardError
+      {}
+    end
+
+    def document_principal_for(document_id)
+      return nil if document_id.nil? || !::SmartRAG.db
+      @document_principal_cache ||= {}
+      return @document_principal_cache[document_id] if @document_principal_cache.key?(document_id)
+      @document_principal_cache[document_id] = ::SmartRAG.db[:source_documents].where(id: document_id).get(:principal)
+    rescue StandardError
+      nil
     end
 
     def extract_vector_score(result, mode)
@@ -573,6 +628,22 @@ module SmartRAG
       return {} unless plan.is_a?(Hash)
 
       deep_symbolize(plan)
+    end
+
+    def scope_plan_to_principal(plan, principal)
+      allowed_ids = ::SmartRAG.db[:source_documents].where(principal: principal.to_s).select_map(:id)
+      requested = Array(plan.dig(:global_filters, :document_ids)).map(&:to_i)
+      allowed_ids &= requested unless requested.empty?
+      filters = symbolize_keys(plan[:global_filters] || {}).merge(
+        document_ids: allowed_ids,
+        principal: principal.to_s
+      )
+      plan.merge(global_filters: filters)
+    end
+
+    def public_plan(plan)
+      filters = symbolize_keys(plan[:global_filters] || {}).reject { |key, _| key == :principal }
+      plan.merge(global_filters: filters)
     end
 
     def validate_plan!(plan)
