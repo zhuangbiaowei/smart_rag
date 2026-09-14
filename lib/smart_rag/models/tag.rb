@@ -7,7 +7,7 @@ module SmartRAG
     class Tag < Sequel::Model
       # Set dataset after database is connected
       def self.set_dataset_from_db
-        set_dataset(:tags)
+        set_dataset(Sequel::Model.db[:tags])
       end
       include FactoryBotHelpers
       plugin :validation_helpers

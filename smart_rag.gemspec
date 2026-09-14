@@ -30,16 +30,16 @@ Gem::Specification.new do |spec|
   spec.executables = spec.files.grep(%r{\Aexe/}) { |f| File.basename(f) }
   spec.require_paths = ["lib"]
 
-  # Dependencies
+  # Runtime dependencies (must cover every gem `require`d from lib/)
   spec.add_dependency "sequel", "~> 5.0"
   spec.add_dependency "pg", "~> 1.0"
-  spec.add_dependency "yaml", "~> 0.2"
-  spec.add_dependency "httparty", "~> 0.20"
-  spec.add_dependency "nokogiri", "~> 1.0"
   spec.add_dependency "rack", ">= 2.2", "< 4"
   spec.add_dependency "puma", ">= 6.0", "< 8"
-  spec.add_dependency "markitdown", "~> 0.1"
   spec.add_dependency "aws-sdk-s3", "~> 1.0"
+  spec.add_dependency "smart_prompt", "~> 0.3.5"
+  spec.add_dependency "concurrent-ruby", "~> 1.0"
+  spec.add_dependency "ostruct", "~> 0.6"
+  spec.add_dependency "dotenv", "~> 2.8"
 
   # Development dependencies
   spec.add_development_dependency "bundler", "~> 4.0"

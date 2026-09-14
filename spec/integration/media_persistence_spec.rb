@@ -8,6 +8,7 @@ require_relative '../support/database_helpers'
 
 RSpec.describe 'media metadata persistence', type: :integration do
   before(:all) do
+    @original_db = SmartRAG::Models.db
     @db = Sequel.connect(DatabaseHelpers.test_db_config)
     SmartRAG.db = @db
     SmartRAG::Models.db = @db
@@ -17,6 +18,8 @@ RSpec.describe 'media metadata persistence', type: :integration do
 
   after(:all) do
     @db&.disconnect
+    SmartRAG.db = @original_db
+    SmartRAG::Models.db = @original_db
   end
 
   around do |example|

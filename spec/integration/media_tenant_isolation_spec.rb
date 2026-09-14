@@ -11,6 +11,7 @@ require_relative '../support/database_helpers'
 
 RSpec.describe 'media document principal isolation', type: :integration do
   before(:all) do
+    @original_db = SmartRAG::Models.db
     @db = Sequel.connect(DatabaseHelpers.test_db_config)
     Sequel.extension :migration
     Sequel::Migrator.run(@db, File.expand_path('../../db/migrations', __dir__))
@@ -20,7 +21,11 @@ RSpec.describe 'media document principal isolation', type: :integration do
     SmartRAG::Models::SourceSection.set_dataset(@db[:source_sections])
   end
 
-  after(:all) { @db&.disconnect }
+  after(:all) do
+    @db&.disconnect
+    SmartRAG.db = @original_db
+    SmartRAG::Models.db = @original_db
+  end
   around { |example| @db.transaction(rollback: :always) { example.run } }
 
   let(:rag) do

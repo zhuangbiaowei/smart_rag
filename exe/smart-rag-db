@@ -1,0 +1,163 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+# SmartRAG database bootstrap CLI.
+#
+# Usage:
+#   smart-rag-db create    # create the database
+#   smart-rag-db drop      # drop the database
+#   smart-rag-db migrate   # enable pg extensions + run migrations
+#   smart-rag-db seed      # load full-text search seed data
+#   smart-rag-db reset     # drop + create + migrate + seed
+
+require "optparse"
+
+COMMANDS = %w[create drop migrate seed reset].freeze
+
+command = ARGV.shift
+abort "Usage: smart-rag-db {#{COMMANDS.join('|')}}" unless COMMANDS.include?(command)
+
+require "smart_rag"
+
+# --- helpers ---------------------------------------------------------------
+
+def load_db_config
+  SmartRAG::Config.load[:database]
+rescue StandardError => e
+  warn "Warning: could not load config (#{e.message}); falling back to SMARTRAG_DB_* env vars."
+  {
+    adapter: "postgresql",
+    host: ENV["SMARTRAG_DB_HOST"] || "localhost",
+    port: ENV["SMARTRAG_DB_PORT"] || 5432,
+    database: ENV["SMARTRAG_DB_NAME"] || "smart_rag_development",
+    username: ENV["SMARTRAG_DB_USER"] || "postgres",
+    password: ENV["SMARTRAG_DB_PASSWORD"],
+    pool: 5,
+    encoding: "UTF8",
+    timeout: 5000,
+  }
+end
+
+def windows?
+  /mswin|mingw|cygwin/i.match?(RbConfig::CONFIG["host_os"])
+end
+
+def running_as_root?
+  Process.respond_to?(:uid) && Process.uid == 0
+end
+
+def connect(config, database: nil)
+  require "sequel"
+  cfg = config.reject { |key, _| key == :extensions || key.to_s == "extensions" }
+  cfg = cfg.merge(database: database) if database
+  Sequel.connect(cfg)
+end
+
+def migrations_dir
+  File.expand_path("../db/migrations", __dir__)
+end
+
+def seeds_file
+  File.expand_path("../db/seeds/text_search_configs.sql", __dir__)
+end
+
+def print_hints(command)
+  warn "You may need to:"
+  warn "  1. Ensure PostgreSQL is running"
+  warn "  2. Set SMARTRAG_DB_* environment variables (or create a .env file)"
+  warn "  3. Use `sudo -u postgres smart-rag-db #{command}` when running as root"
+end
+
+# --- commands --------------------------------------------------------------
+
+def create_database(config)
+  database = config[:database].to_s
+  host = (config[:host] || "localhost").to_s
+  port = (config[:port] || 5432).to_s
+  username = (config[:username] || "postgres").to_s
+
+  created = false
+  if host == "localhost" && running_as_root? && !windows?
+    created = system("sudo", "-u", username, "createdb", "-h", host, "-p", port, database)
+  end
+
+  return true if created
+
+  db = connect(config, database: "postgres")
+  db.execute("CREATE DATABASE #{database}")
+  db.disconnect
+  true
+end
+
+def drop_database(config)
+  database = config[:database].to_s
+  host = (config[:host] || "localhost").to_s
+  port = (config[:port] || 5432).to_s
+  username = (config[:username] || "postgres").to_s
+
+  dropped = false
+  if host == "localhost" && running_as_root? && !windows?
+    dropped = system("sudo", "-u", username, "dropdb", "-h", host, "-p", port, "--if-exists", database)
+  end
+
+  return true if dropped
+
+  db = connect(config, database: "postgres")
+  db.execute("DROP DATABASE IF EXISTS #{database}")
+  db.disconnect
+  true
+end
+
+def migrate_database(config)
+  require "sequel"
+  Sequel.extension :migration
+
+  db = connect(config)
+  db.run "CREATE EXTENSION IF NOT EXISTS vector"
+  begin
+    db.run "CREATE EXTENSION IF NOT EXISTS pg_jieba"
+  rescue Sequel::DatabaseError => e
+    puts "Warning: pg_jieba extension not available (#{e.message}); Chinese full-text will fall back to 'simple'"
+  end
+
+  Sequel::Migrator.run(db, migrations_dir)
+  puts "Migrations completed"
+  db.disconnect
+end
+
+def seed_database(config)
+  abort "Seeds file not found: #{seeds_file}" unless File.exist?(seeds_file)
+
+  db = connect(config)
+  db.run(File.read(seeds_file))
+  puts "Database seeded"
+  db.disconnect
+end
+
+# --- dispatch ---------------------------------------------------------------
+
+begin
+  config = load_db_config
+
+  case command
+  when "create"
+    create_database(config)
+    puts "Database #{config[:database]} created"
+  when "drop"
+    drop_database(config)
+    puts "Database #{config[:database]} dropped"
+  when "migrate"
+    migrate_database(config)
+  when "seed"
+    seed_database(config)
+  when "reset"
+    drop_database(config)
+    create_database(config)
+    migrate_database(config)
+    seed_database(config)
+  end
+rescue StandardError => e
+  warn "smart-rag-db #{command} failed: #{e.message}"
+  print_hints(command)
+  exit 1
+end

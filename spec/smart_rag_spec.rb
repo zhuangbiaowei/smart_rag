@@ -83,8 +83,8 @@ RSpec.describe SmartRAG::SmartRAG do
       smart_rag.add_document(temp_file.path, options)
 
       expect(document_processor).to have_received(:create_document)
-        .with(temp_file.path, hash_including(options).and(
-          hash_including(metadata: hash_including(media_type: 'document', schema_version: 1))
+        .with(temp_file.path, hash_including(
+          options.merge(metadata: hash_including(media_type: 'document', schema_version: 1))
         ))
     end
   end

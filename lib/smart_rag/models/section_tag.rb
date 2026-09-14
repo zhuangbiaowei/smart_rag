@@ -5,6 +5,11 @@ module SmartRAG
   module Models
     # SectionTag model for many-to-many relationship between sections and tags
     class SectionTag < Sequel::Model(:section_tags)
+      # Set dataset after database is connected
+      def self.set_dataset_from_db
+        set_dataset(Sequel::Model.db[:section_tags])
+      end
+
       include FactoryBotHelpers
       plugin :validation_helpers
       plugin :timestamps, update_on_create: false

@@ -7,7 +7,7 @@ module SmartRAG
     class SearchLog < Sequel::Model
       # Set dataset after database is connected
       def self.set_dataset_from_db
-        set_dataset(:search_logs)
+        set_dataset(Sequel::Model.db[:search_logs])
       end
       include FactoryBotHelpers
       plugin :validation_helpers

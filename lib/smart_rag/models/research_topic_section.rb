@@ -5,6 +5,11 @@ module SmartRAG
   module Models
     # ResearchTopicSection model for many-to-many relationship
     class ResearchTopicSection < Sequel::Model(:research_topic_sections)
+      # Set dataset after database is connected
+      def self.set_dataset_from_db
+        set_dataset(Sequel::Model.db[:research_topic_sections])
+      end
+
       include FactoryBotHelpers
       plugin :validation_helpers
       plugin :timestamps, update_on_create: false

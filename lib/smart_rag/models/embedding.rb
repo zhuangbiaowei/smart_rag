@@ -11,7 +11,7 @@ module SmartRAG
 
       # Set dataset after database is connected
       def self.set_dataset_from_db
-        set_dataset(:embeddings)
+        set_dataset(Sequel::Model.db[:embeddings])
       end
 
       # Add bang methods for FactoryBot compatibility

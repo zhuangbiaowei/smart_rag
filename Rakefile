@@ -139,7 +139,11 @@ namespace :db do
 
     # Enable extensions
     db.run "CREATE EXTENSION IF NOT EXISTS vector"
-    db.run "CREATE EXTENSION IF NOT EXISTS pg_jieba"
+    begin
+      db.run "CREATE EXTENSION IF NOT EXISTS pg_jieba"
+    rescue Sequel::DatabaseError => e
+      puts "Warning: pg_jieba extension not available (#{e.message}); Chinese full-text will fall back to 'simple'"
+    end
 
     migrations_dir = File.join(__dir__, "db", "migrations")
     Sequel::Migrator.run(db, migrations_dir)

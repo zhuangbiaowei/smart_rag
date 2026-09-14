@@ -382,6 +382,15 @@ RSpec.describe 'SmartRAG API Error Handling' do
   end
 
   describe 'Configuration and Initialization Errors' do
+    around do |example|
+      original_db = SmartRAG.db
+      original_models_db = SmartRAG::Models.db
+      example.run
+    ensure
+      SmartRAG.db = original_db
+      SmartRAG::Models.db = original_models_db
+    end
+
     it 'handles missing configuration gracefully' do
       expect {
         SmartRAG::SmartRAG.new({})
@@ -410,6 +419,11 @@ RSpec.describe 'SmartRAG API Error Handling' do
           host: 'nonexistent'
         }
       }
+
+      # Simulate a fresh process without a pre-existing database connection so
+      # SmartRAG actually attempts to connect with the invalid config.
+      allow(SmartRAG).to receive(:db).and_return(nil)
+      allow(SmartRAG::Models).to receive(:db).and_return(nil)
 
       # Should initialize in limited mode without raising error
       smart_rag = SmartRAG::SmartRAG.new(config_without_db)

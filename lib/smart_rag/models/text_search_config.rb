@@ -5,6 +5,11 @@ module SmartRAG
   module Models
     # TextSearchConfig model for language-specific search configurations
     class TextSearchConfig < Sequel::Model(:text_search_configs)
+      # Set dataset after database is connected
+      def self.set_dataset_from_db
+        set_dataset(Sequel::Model.db[:text_search_configs])
+      end
+
       include FactoryBotHelpers
       plugin :validation_helpers
       # This model uses text_search_configs table with language_code as PK

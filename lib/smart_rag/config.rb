@@ -8,6 +8,8 @@ module SmartRAG
         # If file_path is a Hash, return it directly (already a config hash)
         return symbolize_keys(file_path) if file_path.is_a?(Hash)
 
+        load_dotenv
+
         file_path ||= default_config_path
 
         unless File.exist?(file_path)
@@ -71,6 +73,16 @@ module SmartRAG
 
         # Convert string keys to symbols for consistency
         symbolize_keys(config) if config.is_a?(Hash)
+      end
+
+      # Load .env from the current directory so ERB `<%= ENV['...'] %>`
+      # templates and SMARTRAG_* variables work consistently. Falls back to
+      # real environment variables when the dotenv gem is unavailable.
+      def load_dotenv
+        require "dotenv"
+        Dotenv.load
+      rescue LoadError
+        # dotenv is optional; plain environment variables still work
       end
 
       private

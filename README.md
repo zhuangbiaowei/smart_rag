@@ -60,7 +60,7 @@ SmartRAG 覆盖了 RAG 系统的完整生命周期：
 
 当前默认配置为本地 Ollama 兼容端点：
 
-- Embedding 模型：`qwen3-embedding`（1024 维）
+- Embedding 模型：`qwen3-embedding`（4096 维）
 - 文本 LLM 模型：`qwen3`
 - Embedding 端点：`http://localhost:11434/v1/embeddings`
 - LLM 端点：`http://localhost:11434/v1/chat/completions`
@@ -69,46 +69,63 @@ SmartRAG 覆盖了 RAG 系统的完整生命周期：
 
 ## 快速开始
 
-### 1) 安装依赖
+### 方式 A：安装 gem 使用（推荐）
+
+1) 安装：
+
+```bash
+gem install smart_rag
+# 或写入 Gemfile：gem "smart_rag"
+```
+
+2) 配置数据库连接（任选其一）：
+
+- 复制 `.env.example` 为 `.env` 并填写（库会自动加载 `.env`）：
+
+  ```bash
+  cp .env.example .env
+  ```
+
+- 或直接导出环境变量。必填数据库变量：
+
+  - `SMARTRAG_DB_HOST`
+  - `SMARTRAG_DB_PORT`
+  - `SMARTRAG_DB_NAME`
+  - `SMARTRAG_DB_USER`
+  - `SMARTRAG_DB_PASSWORD`
+
+3) 初始化数据库（建库、迁移、种子数据）：
+
+```bash
+smart-rag-db create
+smart-rag-db migrate
+smart-rag-db seed
+# 或一步到位：smart-rag-db reset
+```
+
+4) 在代码中使用：
+
+```ruby
+require "smart_rag"
+
+client = SmartRAG::SmartRAG.new   # 读取内置默认配置 + 环境变量
+client.add_document("docs/report.md", generate_embeddings: true)
+results = client.search("机器学习是什么？")
+```
+
+> 也可显式指定配置：`SmartRAG::SmartRAG.new("config/smart_rag.yml")` 或传入 Hash。完整用法见「API 参考」。
+
+### 方式 B：源码开发
 
 ```bash
 bundle install
-```
-
-### 2) 配置环境变量
-
-```bash
 cp .env.example .env
+bundle exec rake db:create db:migrate db:seed
+ruby test/import_doc.rb import       # 可选：导入测试文档
+ruby examples/01_quick_start.rb      # 运行示例程序
 ```
 
-必填数据库变量：
-
-- `SMARTRAG_DB_HOST`
-- `SMARTRAG_DB_PORT`
-- `SMARTRAG_DB_NAME`
-- `SMARTRAG_DB_USER`
-- `SMARTRAG_DB_PASSWORD`
-
-### 3) 初始化数据库
-
-```bash
-bundle exec rake db:create
-bundle exec rake db:migrate
-bundle exec rake db:seed
-```
-
-### 4) 导入测试文档（可选）
-
-```bash
-ruby test/import_doc.rb import
-```
-
-### 5) 运行示例程序
-
-```bash
-ruby examples/01_quick_start.rb
-ruby examples/03_search_operations.rb
-```
+前置依赖见下方「依赖」。
 
 ## API 参考
 
@@ -355,11 +372,19 @@ chunking:
 
 ## 依赖
 
+Ruby 运行时依赖由 gem 自动安装（见 `smart_rag.gemspec`），包括 Sequel、pg、SmartPrompt、concurrent-ruby、dotenv、rack、puma、aws-sdk-s3 等。
+
+还需自行准备的外部服务/工具：
+
 - **Ruby** >= 2.7
-- **PostgreSQL** + `pgvector` 扩展 + `pg_jieba` 扩展
-- **Sequel** ORM
-- **SmartPrompt** gem（LLM 调用抽象层）
-- **Nokogiri** / **Markitdown**（文档格式转换）
+- **PostgreSQL** + `pgvector` 扩展 + `pg_jieba` 扩展（中文分词，可选；未安装时中文退回 `simple` 分词）
+- **Python 3** + `markitdown`（仅在导入 PDF/DOCX/HTML 等需要格式转换的文档时必需）：
+
+  ```bash
+  pip install markitdown
+  ```
+
+- 向量嵌入与 LLM 端点（默认指向本地 Ollama，见「默认模型配置」）
 
 ## 配置参考
 
@@ -380,7 +405,7 @@ chunking:
 | `SMARTRAG_DB_USER` | `rag_user` | 数据库用户 |
 | `SMARTRAG_DB_PASSWORD` | - | 数据库密码 |
 | `EMBEDDING_MODEL` | `qwen3-embedding` | 嵌入模型 |
-| `EMBEDDING_DIMENSIONS` | `1024` | 向量维度 |
+| `EMBEDDING_DIMENSIONS` | `4096` | 向量维度 |
 | `LLM_MODEL` | `qwen3` | LLM 模型 |
 | `DEFAULT_LANGUAGE` | `en` | 默认语言 |
 | `ENABLE_JIEBA` | `true` | 启用中文分词 |

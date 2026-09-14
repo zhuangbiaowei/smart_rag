@@ -24,7 +24,7 @@ module SmartRAG
         Dir.glob(File.join(workers_dir, '*.rb')).each { |file| require file }
 
         # Initialize SmartPrompt engine
-        config_path = @config[:config_path] || 'config/llm_config.yml'
+        config_path = @config[:config_path] || File.expand_path('../../../config/llm_config.yml', __dir__)
         @smart_prompt_engine = SmartPrompt::Engine.new(config_path)
       rescue StandardError => e
         log_error('Failed to initialize SmartPrompt engine', e)

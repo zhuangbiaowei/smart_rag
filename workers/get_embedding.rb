@@ -3,5 +3,5 @@ SmartPrompt.define_worker :get_embedding do
   use "OllamaEmbedding"
   model ENV["EMBEDDING_MODEL"] || "qwen3-embedding"
   prompt params[:text]
-  embeddings(1024)
+  embeddings(ENV.fetch("EMBEDDING_DIMENSIONS", "4096").to_i)
 end

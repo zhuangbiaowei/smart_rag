@@ -7,7 +7,7 @@ module SmartRAG
     class SourceSection < Sequel::Model
       # Set dataset after database is connected
       def self.set_dataset_from_db
-        set_dataset(:source_sections)
+        set_dataset(Sequel::Model.db[:source_sections])
       end
       include FactoryBotHelpers
       plugin :validation_helpers

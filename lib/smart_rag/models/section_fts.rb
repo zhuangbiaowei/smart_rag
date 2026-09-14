@@ -5,6 +5,11 @@ module SmartRAG
   module Models
     # SectionFts model for full-text search optimization
     class SectionFts < Sequel::Model(:section_fts)
+      # Set dataset after database is connected
+      def self.set_dataset_from_db
+        set_dataset(Sequel::Model.db[:section_fts])
+      end
+
       include FactoryBotHelpers
       plugin :validation_helpers
       plugin :timestamps, update_on_create: true

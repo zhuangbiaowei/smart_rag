@@ -19,7 +19,12 @@ RSpec.describe 'media P3 production controls', type: :integration do
   end
 
   after(:all) { @db&.disconnect }
-  around { |example| @db.transaction(rollback: :always) { example.run } }
+  around do |example|
+    original_db = SmartRAG.db
+    @db.transaction(rollback: :always) { example.run }
+  ensure
+    SmartRAG.db = original_db
+  end
 
   it 'deduplicates jobs per principal while isolating different principals' do
     queue = SmartRAG::Core::MediaJobQueue.new(db: @db, handler: ->(*) {})

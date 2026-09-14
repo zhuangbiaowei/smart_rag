@@ -1,15 +1,17 @@
 adapters:
   openai: OpenAIAdapter
-logger_file: ./log/prompt.log
 llms:
   OllamaEmbedding:
     adapter: openai
-    url: http://192.168.1.48:11434/v1/
+    url: http://localhost:11434/v1/
     # Ollama OpenAI-compatible endpoint typically ignores api_key, keep a default placeholder.
     api_key: ollama-local
   SiliconFlow:
     adapter: openai
     url: https://api.siliconflow.cn/v1/
-    api_key: ENV["API_KEY"]
+    api_key: ENV["SILICONFLOW_API_KEY"]
+# Worker files are loaded by SmartRAG services directly from the gem's
+# workers/ directory. These paths are only fallbacks for standalone
+# SmartPrompt usage and must stay non-empty.
 worker_path: "./workers"
 template_path: "./templates"

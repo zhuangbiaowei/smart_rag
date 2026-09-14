@@ -7,7 +7,7 @@ module SmartRAG
     class SourceDocument < Sequel::Model
       # Set dataset after database is connected
       def self.set_dataset_from_db
-        set_dataset(:source_documents)
+        set_dataset(Sequel::Model.db[:source_documents])
       end
       plugin :validation_helpers
       plugin :timestamps, update_on_create: true

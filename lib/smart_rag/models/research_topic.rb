@@ -7,7 +7,7 @@ module SmartRAG
     class ResearchTopic < Sequel::Model
       # Set dataset after database is connected
       def self.set_dataset_from_db
-        set_dataset(:research_topics)
+        set_dataset(Sequel::Model.db[:research_topics])
       end
       include FactoryBotHelpers
       plugin :validation_helpers

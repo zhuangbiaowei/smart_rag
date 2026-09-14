@@ -9,14 +9,14 @@ PATH
   specs:
     smart_rag (0.2.0)
       aws-sdk-s3 (~> 1.0)
-      httparty (~> 0.20)
-      markitdown (~> 0.1)
-      nokogiri (~> 1.0)
+      concurrent-ruby (~> 1.0)
+      dotenv (~> 2.8)
+      ostruct (~> 0.6)
       pg (~> 1.0)
       puma (>= 6.0, < 8)
       rack (>= 2.2, < 4)
       sequel (~> 5.0)
-      yaml (~> 0.2)
+      smart_prompt (~> 0.3.5)
 
 GEM
   remote: https://rubygems.org/

@@ -33,7 +33,7 @@ RSpec.describe SmartRAG::Core::Embedding do
     )
   end
 
-  let(:vector) { Array.new(1024) { rand(0.0..1.0) } }
+  let(:vector) { Array.new(1024) { |i| ((i * 37) % 1000) / 1000.0 } }
 
   before do
     allow(SmartRAG::Services::EmbeddingService).to receive(:new).and_return(mock_embedding_service)

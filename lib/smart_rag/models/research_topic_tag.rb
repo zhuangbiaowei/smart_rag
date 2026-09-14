@@ -5,6 +5,11 @@ module SmartRAG
   module Models
     # ResearchTopicTag model for many-to-many relationship between topics and tags
     class ResearchTopicTag < Sequel::Model(:research_topic_tags)
+      # Set dataset after database is connected
+      def self.set_dataset_from_db
+        set_dataset(Sequel::Model.db[:research_topic_tags])
+      end
+
       include FactoryBotHelpers
       plugin :validation_helpers
       plugin :timestamps, update_on_create: false

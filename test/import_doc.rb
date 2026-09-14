@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env ruby
+#!/usr/bin/env ruby
 
 require "./lib/smart_rag"
 require "logger"
