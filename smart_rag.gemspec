@@ -36,7 +36,7 @@ Gem::Specification.new do |spec|
   spec.add_dependency "rack", ">= 2.2", "< 4"
   spec.add_dependency "puma", ">= 6.0", "< 8"
   spec.add_dependency "aws-sdk-s3", "~> 1.0"
-  spec.add_dependency "smart_prompt", "~> 0.3.5"
+  spec.add_dependency "smart_prompt", "~> 0.5.4"
   spec.add_dependency "concurrent-ruby", "~> 1.0"
   spec.add_dependency "ostruct", "~> 0.6"
   spec.add_dependency "dotenv", "~> 2.8"
