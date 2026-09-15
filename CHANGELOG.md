@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.2.2 - 2026-09-15
+
+### Fixed
+- 修正 gemspec 中 homepage/source_code_uri/changelog_uri 指向错误仓库地址的问题。
+
 ## 0.2.1 - 2026-09-15
 
 ### Changed

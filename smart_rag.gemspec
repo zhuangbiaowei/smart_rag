@@ -10,13 +10,13 @@ Gem::Specification.new do |spec|
 
   spec.summary = "A hybrid RAG (Retrieval-Augmented Generation) system with vector and full-text search"
   spec.description = "SmartRAG provides intelligent document processing, vector embeddings, full-text search, and hybrid retrieval capabilities for enhanced information retrieval and question answering."
-  spec.homepage = "https://github.com/smartrag/smartrag"
+  spec.homepage = "https://github.com/zhuangbiaowei/smart_rag"
   spec.license = "MIT"
   spec.required_ruby_version = ">= 2.7.0"
 
   spec.metadata["homepage_uri"] = spec.homepage
-  spec.metadata["source_code_uri"] = "https://github.com/smartrag/smartrag"
-  spec.metadata["changelog_uri"] = "https://github.com/smartrag/smartrag/blob/main/CHANGELOG.md"
+  spec.metadata["source_code_uri"] = "https://github.com/zhuangbiaowei/smart_rag"
+  spec.metadata["changelog_uri"] = "https://github.com/zhuangbiaowei/smart_rag/blob/main/CHANGELOG.md"
 
   # Specify which files should be added to the gem when it is released.
   spec.files = Dir.chdir(__dir__) do
