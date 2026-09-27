@@ -1026,7 +1026,13 @@ module SmartRAG
         db_connection = ::SmartRAG.db
 
         embedding_manager = ::SmartRAG::Core::Embedding.new(@config[:database])
-        fulltext_manager = ::SmartRAG::Core::FulltextManager.new(db_connection, (@config[:fulltext] || {}).merge(logger: @logger))
+        # `fulltext_search` is the section name used by the configuration files;
+        # it used to be read as `fulltext`, so the whole section (including
+        # `enable_jieba`) never reached FulltextManager.
+        fulltext_section = @config[:fulltext_search] || @config[:fulltext] || {}
+        fulltext_manager = ::SmartRAG::Core::FulltextManager.new(
+          db_connection, fulltext_section.merge(logger: @logger)
+        )
 
         @query_processor = ::SmartRAG::Core::QueryProcessor.new(
           config: @config,

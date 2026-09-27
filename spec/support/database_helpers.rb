@@ -19,7 +19,7 @@ module DatabaseHelpers
       database: test_db_config,
       embedding: {
         provider: 'mock',
-        dimensions: 1024
+        dimensions: 4096
       },
       fulltext_search: {
         default_language: 'en',

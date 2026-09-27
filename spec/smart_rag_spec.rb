@@ -109,7 +109,7 @@ RSpec.describe SmartRAG::SmartRAG do
     let!(:embedding) do
       SmartRAG::Models::Embedding.create(
         source_id: section.id,
-        vector: pgvector(Array.new(1024) { rand }),
+        vector: pgvector(Array.new(4096) { rand }),
         created_at: Time.now
       )
     end
@@ -653,7 +653,7 @@ RSpec.describe SmartRAG::SmartRAG do
 
             SmartRAG::Models::Embedding.create(
               source_id: section.id,
-              vector: pgvector(Array.new(1024) { rand }),
+              vector: pgvector(Array.new(4096) { rand }),
               created_at: Time.now
             )
           end

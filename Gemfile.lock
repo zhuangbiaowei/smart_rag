@@ -7,7 +7,7 @@ GIT
 PATH
   remote: .
   specs:
-    smart_rag (0.2.2)
+    smart_rag (0.2.4)
       aws-sdk-s3 (~> 1.0)
       concurrent-ruby (~> 1.0)
       dotenv (~> 2.8)
@@ -381,7 +381,7 @@ CHECKSUMS
   simplecov-html (0.13.2) sha256=bd0b8e54e7c2d7685927e8d6286466359b6f16b18cb0df47b508e8d73c777246
   simplecov_json_formatter (0.1.4) sha256=529418fbe8de1713ac2b2d612aa3daa56d316975d307244399fa4838c601b428
   smart_prompt (0.5.4) sha256=81d5e052cf05d63051a68e946e0ba25bcd280dca5e43ce96664551a33656e5bc
-  smart_rag (0.2.2)
+  smart_rag (0.2.4)
   standardwebhooks (1.1.0) sha256=356ba711c14def4fb27310e4163b26bd5cccf325212c3440cabadd825e4be11f
   stringio (3.2.0) sha256=c37cb2e58b4ffbd33fe5cd948c05934af997b36e0b6ca6fdf43afa234cf222e1
   tiktoken_ruby (0.0.17-x64-mingw-ucrt) sha256=8bd2f8e2c38ee9052a8cd4fc83fcb41362beb476d8885ac121125cd4dd065596

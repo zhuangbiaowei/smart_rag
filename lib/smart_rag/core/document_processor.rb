@@ -321,8 +321,15 @@ module SmartRAG
         raise e
       end
 
+      # Read a text file as UTF-8.
+      #
+      # File.binread returns an ASCII-8BIT string, and transcoding that to UTF-8
+      # with `undef: :replace, replace: ''` silently deletes every high byte —
+      # i.e. it deletes all non-ASCII text (CJK included). Declare the encoding
+      # of the bytes instead of transcoding from binary; `scrub` then replaces
+      # only genuinely invalid byte sequences.
       def read_text_file(file_path)
-        normalize_text_content(File.binread(file_path))
+        normalize_text_content(File.read(file_path, mode: 'rb').force_encoding(Encoding::UTF_8))
       rescue StandardError => e
         @logger.error "Failed to read text file #{file_path}: #{e.message}"
         raise e
@@ -333,10 +340,16 @@ module SmartRAG
 
         normalized = content.is_a?(String) ? content.dup : content.to_s
 
-        begin
-          normalized = normalized.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: '')
-        rescue Encoding::UndefinedConversionError, Encoding::InvalidByteSequenceError
-          normalized = normalized.force_encoding(Encoding::UTF_8).scrub
+        if normalized.encoding == Encoding::ASCII_8BIT
+          # Bytes of unknown encoding: reinterpret as UTF-8 instead of dropping
+          # everything above 0x7F.
+          normalized = normalized.force_encoding(Encoding::UTF_8)
+        elsif normalized.encoding != Encoding::UTF_8
+          begin
+            normalized = normalized.encode(Encoding::UTF_8, invalid: :replace, undef: :replace, replace: '')
+          rescue Encoding::UndefinedConversionError, Encoding::InvalidByteSequenceError
+            normalized = normalized.force_encoding(Encoding::UTF_8)
+          end
         end
 
         normalized.scrub

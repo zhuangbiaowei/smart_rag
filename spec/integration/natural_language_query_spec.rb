@@ -32,7 +32,7 @@ RSpec.describe "Natural language query processing integration", type: :integrati
     # Mock embedding generation to return a valid vector
     allow(SmartRAG::Services::EmbeddingService).to receive(:new).and_return(mock_embedding_service)
     allow(mock_embedding_service).to receive(:generate_embedding).and_return(
-      Array.new(1024) { |i| Math.sin(i * 0.01) * 0.5 }
+      Array.new(4096) { |i| Math.sin(i * 0.01) * 0.5 }
     )
 
     # Mock hybrid search service
@@ -482,10 +482,10 @@ RSpec.describe "Natural language query processing integration", type: :integrati
   def create_test_embedding(section, query_similar: false)
     # Generate vector similar to typical query vector if query_similar is true
     vector = if query_similar
-               Array.new(1024) { |i| Math.sin(i * 0.01) * 0.5 }
+               Array.new(4096) { |i| Math.sin(i * 0.01) * 0.5 }
              else
                # Generate very different vector
-               Array.new(1024) { |i| Math.cos(i * 0.02) * 0.3 }
+               Array.new(4096) { |i| Math.cos(i * 0.02) * 0.3 }
              end
 
     vector_str = "[#{vector.join(',')}]"

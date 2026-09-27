@@ -4,8 +4,8 @@ RSpec.describe "Vector Storage and Retrieval Integration" do
   let(:mock_llm_client) { instance_double("LLMClient") }
   let(:embedding_service) { SmartRAG::Services::EmbeddingService.new(mock_llm_client) }
 
-  let(:vector) { Array.new(1024) { rand(0.0..1.0) } }
-  let(:query_vector) { Array.new(1024) { rand(0.0..1.0) } }
+  let(:vector) { Array.new(4096) { rand(0.0..1.0) } }
+  let(:query_vector) { Array.new(4096) { rand(0.0..1.0) } }
 
   # Helper to convert array to pgvector string format
   def pgvector(vector_array)
@@ -198,7 +198,7 @@ RSpec.describe "Vector Storage and Retrieval Integration" do
       }])
 
       # Create embeddings
-      base_vector = Array.new(1024) { rand(0.0..1.0) }
+      base_vector = Array.new(4096) { rand(0.0..1.0) }
 
       embedding1 = SmartRAG::Models::Embedding.new(
         source_id: section_with_tag.id,
@@ -261,7 +261,7 @@ RSpec.describe "Vector Storage and Retrieval Integration" do
       embedding_data = 100.times.map do |i|
         {
           source_id: section.id,
-          vector: pgvector(Array.new(1024) { rand(0.0..1.0) })
+          vector: pgvector(Array.new(4096) { rand(0.0..1.0) })
         }
       end
 
@@ -300,7 +300,7 @@ RSpec.describe "Vector Storage and Retrieval Integration" do
       embeddings = 10.times.map do |i|
         embedding = SmartRAG::Models::Embedding.new(
           source_id: section.id,
-          vector: pgvector(Array.new(1024) { rand(0.0..1.0) })
+          vector: pgvector(Array.new(4096) { rand(0.0..1.0) })
         )
         embedding.save!
         embedding
@@ -422,7 +422,7 @@ RSpec.describe "Vector Storage and Retrieval Integration" do
       document.save
 
       # Use a specific query vector for testing
-      test_query_vector = Array.new(1024) { rand(0.0..1.0) }
+      test_query_vector = Array.new(4096) { rand(0.0..1.0) }
 
       50.times do |i|
         section = SmartRAG::Models::SourceSection.new(
@@ -434,7 +434,7 @@ RSpec.describe "Vector Storage and Retrieval Integration" do
         sections << section
 
         # Make the first embedding exactly match our query for guaranteed results
-        vector = i == 0 ? test_query_vector : Array.new(1024) { rand(0.0..1.0) }
+        vector = i == 0 ? test_query_vector : Array.new(4096) { rand(0.0..1.0) }
 
         embedding = SmartRAG::Models::Embedding.new(
           source_id: section.id,

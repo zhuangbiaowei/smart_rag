@@ -459,6 +459,25 @@ RSpec.describe SmartRAG::Core::FulltextManager do
         config = fulltext_manager.send(:get_text_search_config, "unknown")
         expect(config).to eq("pg_catalog.simple")
       end
+
+      # pg_jieba installs its configuration as `jiebacfg`; older docs and seed
+      # data assumed a name `jieba` that no released version provides.
+      it "resolves the legacy jieba name to the configuration pg_jieba installs" do
+        skip "pg_jieba extension not available" unless pg_jieba_available?
+
+        allow(SmartRAG::Models::TextSearchConfig).to receive(:first)
+          .and_return(double(config_name: "jieba"))
+
+        expect(fulltext_manager.send(:get_text_search_config, "zh")).to eq("jiebacfg")
+      end
+
+      it "falls back to simple when enable_jieba is switched off" do
+        allow(SmartRAG::Models::TextSearchConfig).to receive(:first)
+          .and_return(double(config_name: "jiebacfg"))
+        manager = described_class.new(db, fulltext_search: { enable_jieba: false })
+
+        expect(manager.send(:get_text_search_config, "zh")).to eq("pg_catalog.simple")
+      end
     end
 
     describe "#setweight" do

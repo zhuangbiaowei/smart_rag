@@ -19,6 +19,7 @@ module SmartRAG
     def execute(plan:)
       @document_metadata_cache = {}
       @section_topic_cache = {}
+      @document_record_cache = {}
       normalized_plan = normalize_plan(plan)
       validate_plan!(normalized_plan)
       principal = normalized_plan.delete(:_principal)
@@ -459,6 +460,15 @@ module SmartRAG
         return section.document.url if section.document.respond_to?(:url)
       end
 
+      # Not every search backend returns source metadata: vector search results
+      # carry only similarity/rank/section, so this returned nil for them. A nil
+      # URI matches no `source_uri_prefix`, so every candidate was rejected by
+      # the scope filter and semantic/hybrid plans always came back empty. The
+      # document row is authoritative.
+      document = document_record_for(extract_document_id(result, section))
+      stored_uri = document && document[:source_uri]
+      return stored_uri unless stored_uri.to_s.empty?
+
       nil
     end
 
@@ -470,6 +480,12 @@ module SmartRAG
           return source_type if source_type
         end
       end
+
+      # Same reasoning as extract_source_uri: prefer what was stored on the
+      # document over guessing from a URI a backend may not have returned.
+      document = document_record_for(extract_document_id(result, extract_section(result)))
+      stored_type = document && document[:source_type]
+      return stored_type unless stored_type.to_s.empty?
 
       return 'url' if source_uri.to_s.start_with?('http://', 'https://')
       return 'file' if source_uri.to_s.start_with?('file://', '/')
@@ -574,6 +590,21 @@ module SmartRAG
       @document_principal_cache ||= {}
       return @document_principal_cache[document_id] if @document_principal_cache.key?(document_id)
       @document_principal_cache[document_id] = ::SmartRAG.db[:source_documents].where(id: document_id).get(:principal)
+    rescue StandardError
+      nil
+    end
+
+    # Document rows are the authoritative source for scope metadata; search
+    # backends do not all echo it back to the caller.
+    def document_record_for(document_id)
+      return nil if document_id.nil?
+      return nil unless defined?(::SmartRAG) && ::SmartRAG.respond_to?(:db) && ::SmartRAG.db
+
+      @document_record_cache ||= {}
+      key = document_id.to_i
+      return @document_record_cache[key] if @document_record_cache.key?(key)
+
+      @document_record_cache[key] = ::SmartRAG.db[:source_documents].where(id: key).first
     rescue StandardError
       nil
     end

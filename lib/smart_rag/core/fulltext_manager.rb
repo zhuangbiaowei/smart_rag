@@ -28,6 +28,13 @@ module SmartRAG
         @query_parser = options[:query_parser] || Parsers::QueryParser.new
         @logger = options[:logger] || Logger.new(STDOUT)
         @config = DEFAULT_CONFIG.merge(options)
+
+        # Callers either hand over the whole configuration (with a nested
+        # `fulltext_search` section) or the section itself. Surface the nested
+        # keys either way so options like `enable_jieba` are actually visible.
+        nested = @config[:fulltext_search] || @config['fulltext_search'] ||
+                 @config[:fulltext] || @config['fulltext']
+        @config = @config.merge(nested) if nested.is_a?(Hash)
       end
 
       # Store or update full-text index for a section
@@ -345,27 +352,65 @@ module SmartRAG
         dataset
       end
 
+      # Text search configurations shipped by the pg_jieba extension: upstream
+      # installs `jiebacfg` (mix segmentation, recommended) plus `jiebaqry`,
+      # `jiebamp` and `jiebahmm`. No released version provides a configuration
+      # literally named `jieba` — probing that name always failed, which silently
+      # downgraded Chinese search to `simple` even with the extension installed.
+      JIEBA_CONFIG = 'jiebacfg'
+      JIEBA_CONFIG_NAMES = %w[jieba jiebacfg jiebaqry jiebamp jiebahmm].freeze
+
       # Get text search configuration
       def get_text_search_config(language)
         config = Models::TextSearchConfig.first(language_code: language.to_s)&.config_name
         return 'pg_catalog.simple' unless config
+        return config unless jieba_config?(config)
+        # `fulltext_search.enable_jieba` (on unless explicitly disabled) is the
+        # switch for Chinese segmentation.
+        return 'pg_catalog.simple' unless jieba_enabled?
 
-        # For development/test environments, always fall back to simple if pg_jieba is not available
-        if config == 'jieba'
-          begin
-            # Test if pg_jieba is available in a separate transaction
-            db.fetch("SELECT to_tsvector('jieba', 'test')").first
-            return 'jieba'
-          rescue StandardError => e
-            @logger.warn "pg_jieba extension not available, falling back to simple: #{e.message}"
-            return 'pg_catalog.simple'
-          end
-        end
-
-        config
+        jieba_config_name(config) || 'pg_catalog.simple'
       rescue StandardError => e
         @logger.warn "Failed to get text search config for #{language}: #{e.message}, using simple"
         'pg_catalog.simple'
+      end
+
+      # Does this configuration name belong to pg_jieba?
+      def jieba_config?(name)
+        JIEBA_CONFIG_NAMES.include?(name.to_s.sub(/\Apg_catalog\./, ''))
+      end
+
+      # `enable_jieba` defaults to on; only an explicit false switches it off.
+      def jieba_enabled?
+        value = config_value(:enable_jieba)
+        return true if value.nil?
+
+        value != false && value.to_s != 'false'
+      end
+
+      # Return a configuration the server actually has: prefer the name the
+      # database row specifies, then the name pg_jieba really installs.
+      #
+      # This asks the catalogue instead of probing with `to_tsvector(name, ...)`:
+      # a probe that raises would abort any enclosing transaction (PostgreSQL
+      # refuses further statements until it is rolled back), which made every
+      # lookup after the first failure fall back to simple.
+      def jieba_config_name(preferred)
+        candidates = [preferred.to_s, JIEBA_CONFIG].uniq
+        present = db[:pg_ts_config].where(cfgname: candidates).select_map(:cfgname)
+        name = candidates.find { |candidate| present.include?(candidate) }
+        return name if name
+
+        @logger.warn "pg_jieba text search configuration unavailable " \
+                     "(tried: #{candidates.join(', ')}), falling back to simple"
+        nil
+      end
+
+      def config_value(key)
+        return @config[key] if @config.key?(key)
+        return @config[key.to_s] if @config.key?(key.to_s)
+
+        nil
       end
 
       # Set weight for tsvector (helper method)

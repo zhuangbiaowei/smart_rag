@@ -58,7 +58,7 @@ RSpec.describe "Tag-enhanced vector search", type: :integration do
     def create_test_embeddings_and_return_vector(section)
       # Create a single embedding and return the vector array
       base_pattern = Array.new(256) { rand(0.3..0.7) }
-      base_vector = base_pattern * 4
+      base_vector = base_pattern * 16
 
       vector = base_vector.map { |v| v.clamp(-0.8, 0.8) }
       vector_str = "[#{vector.join(',')}]"
@@ -77,7 +77,7 @@ RSpec.describe "Tag-enhanced vector search", type: :integration do
       sections.each_with_index do |section, i|
         # Similar to above but without returning the vector
         base_pattern = Array.new(256) { rand(0.3..0.7) }
-        base_vector = base_pattern * 4
+        base_vector = base_pattern * 16
 
         modification_factor = (i + 1) * 0.03
         vector = base_vector.map.with_index do |v, idx|
@@ -167,7 +167,7 @@ RSpec.describe "Tag-enhanced vector search", type: :integration do
     end
 
     it "respects similarity threshold" do
-      query_vector = Array.new(1024) { rand(0.0..1.0) }
+      query_vector = Array.new(4096) { rand(0.0..1.0) }
       search_tags = [ai_tag]
 
       results = embedding_manager.search_by_vector_with_tags(
@@ -184,14 +184,14 @@ RSpec.describe "Tag-enhanced vector search", type: :integration do
     end
 
     it "validates input parameters" do
-      query_vector = Array.new(1024) { rand(0.0..1.0) }
+      query_vector = Array.new(4096) { rand(0.0..1.0) }
 
       expect { embedding_manager.search_by_vector_with_tags(nil, [ai_tag]) }.to raise_error(ArgumentError, "Vector cannot be nil")
       expect { embedding_manager.search_by_vector_with_tags(query_vector, nil) }.to raise_error(ArgumentError, "Tags cannot be nil")
     end
 
     it "handles empty tag arrays" do
-      query_vector = Array.new(1024) { rand(0.0..1.0) }
+      query_vector = Array.new(4096) { rand(0.0..1.0) }
 
       results = embedding_manager.search_by_vector_with_tags(query_vector, [])
 
@@ -200,7 +200,7 @@ RSpec.describe "Tag-enhanced vector search", type: :integration do
     end
 
     it "tracks matching tag information" do
-      query_vector = Array.new(1024) { rand(0.0..1.0) }
+      query_vector = Array.new(4096) { rand(0.0..1.0) }
       search_tags = [ai_tag, ml_tag]
 
       results = embedding_manager.search_by_vector_with_tags(query_vector, search_tags, limit: 10, threshold: 0.0)
@@ -215,7 +215,7 @@ RSpec.describe "Tag-enhanced vector search", type: :integration do
 
   describe "tag boost calculation" do
     it "calculates correct boost scores" do
-      query_vector = Array.new(1024) { rand(0.0..1.0) }
+      query_vector = Array.new(4096) { rand(0.0..1.0) }
       search_tags = [ai_tag, ml_tag]
 
       # Create a section with all search tags
@@ -249,15 +249,15 @@ RSpec.describe "Tag-enhanced vector search", type: :integration do
       # Create sections in both documents
       section1 = document.add_section(content: "AI content", section_number: 1)
       section1.add_tag(ai_tag)
-      create_embedding(section1, Array.new(1024) { 0.5 })
+      create_embedding(section1, Array.new(4096) { 0.5 })
 
       section2 = @other_document.add_section(content: "Also AI content", section_number: 1)
       section2.add_tag(ai_tag)
-      create_embedding(section2, Array.new(1024) { 0.5 })
+      create_embedding(section2, Array.new(4096) { 0.5 })
     end
 
     it "filters by document ID" do
-      query_vector = Array.new(1024) { rand(0.0..1.0) }
+      query_vector = Array.new(4096) { rand(0.0..1.0) }
       search_tags = [ai_tag]
 
       results = embedding_manager.search_by_vector_with_tags(
@@ -276,7 +276,7 @@ RSpec.describe "Tag-enhanced vector search", type: :integration do
 
   # Helper method to create embeddings
   def create_embedding(section, vector = nil)
-    vector ||= Array.new(1024) { rand(0.0..1.0) }
+    vector ||= Array.new(4096) { rand(0.0..1.0) }
     # Convert vector to pgvector format
     vector_str = "[#{vector.join(',')}]"
     SmartRAG::Models::Embedding.create!(

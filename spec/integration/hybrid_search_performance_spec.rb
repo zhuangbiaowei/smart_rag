@@ -62,7 +62,7 @@ RSpec.describe "Hybrid Search Performance", type: :integration do
       @test_sections << section
 
       # Create embedding immediately
-      vector = Array.new(1024) { rand(-1.0..1.0) }
+      vector = Array.new(4096) { rand(-1.0..1.0) }
       SmartRAG::Models::Embedding.create(
         source_id: section.id,
         vector: pgvector(vector)
@@ -83,7 +83,7 @@ RSpec.describe "Hybrid Search Performance", type: :integration do
 
     # Create embeddings
     @sections.each_with_index do |section, index|
-      vector = generate_random_vector(1024)
+      vector = generate_random_vector(4096)
       SmartRAG::Models::Embedding.create(
         source_id: section.id,
         vector: pgvector(vector)
@@ -127,7 +127,7 @@ RSpec.describe "Hybrid Search Performance", type: :integration do
     # Keep integration behavior while avoiding external embedding dependency.
     allow_any_instance_of(SmartRAG::Services::EmbeddingService)
       .to receive(:generate_embedding)
-      .and_return(Array.new(1024) { rand(-1.0..1.0) })
+      .and_return(Array.new(4096) { rand(-1.0..1.0) })
   end
 
   after(:all) do
@@ -230,7 +230,7 @@ RSpec.describe "Hybrid Search Performance", type: :integration do
           content: "Machine learning is a subset of artificial intelligence that enables computers to learn from data without explicit programming."
         )
 
-        vector = pgvector(Array.new(1024) { rand(-1.0..1.0) })
+        vector = pgvector(Array.new(4096) { rand(-1.0..1.0) })
         SmartRAG::Models::Embedding.create(
           source_id: test_section.id,
           vector: vector
@@ -297,7 +297,7 @@ RSpec.describe "Hybrid Search Performance", type: :integration do
           content: "Deep learning and artificial intelligence are transforming technology. Neural networks are key to AI advancement."
         )
 
-        vector = pgvector(Array.new(1024) { rand(-1.0..1.0) })
+        vector = pgvector(Array.new(4096) { rand(-1.0..1.0) })
         SmartRAG::Models::Embedding.create(
           source_id: test_section.id,
           vector: vector
